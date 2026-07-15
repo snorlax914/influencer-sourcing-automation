@@ -1,4 +1,4 @@
-# hallyu-scout
+# influencer-sourcing-automation
 
 > 한국 체류 해외 인플루언서 소싱 · 스코어링 · 아웃리치 자동화 시스템
 > n8n + LLM 기반 · ㈜웨이브앤바이브 `1953형제돼지국밥` 글로벌 마케팅 프로젝트
