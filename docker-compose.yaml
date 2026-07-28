@@ -9,7 +9,7 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U n8n']
+      test: [ 'CMD-SHELL', 'pg_isready -U n8n' ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -30,7 +30,8 @@ services:
       - WEBHOOK_URL=http://localhost:5678/
       - GENERIC_TIMEZONE=Asia/Seoul
       - TZ=Asia/Seoul
-      - N8N_ENCRYPTION_KEY=아무거나_긴_랜덤_문자열
+      # 프로젝트 루트 .env 에 N8N_ENCRYPTION_KEY=<긴 랜덤 문자열> 로 지정하세요.
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY 를 .env 에 설정하세요}
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:

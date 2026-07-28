@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>인플루언서 발굴 대시보드</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #e2e5ea;
+    --text: #1c2024;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --danger: #dc2626;
+    --ok: #059669;
+    --warn: #b45309;
+    --console-bg: #14171c;
+    --console-text: #d6dae0;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.55 "Pretendard", -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 650; }
+  .spacer { flex: 1; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: #eef0f3; color: var(--muted);
+  }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pill.running { background: #eff6ff; color: var(--accent); }
+  .pill.running .dot { animation: blink 1s steps(2, start) infinite; }
+  .pill.done    { background: #ecfdf5; color: var(--ok); }
+  .pill.error   { background: #fef2f2; color: var(--danger); }
+  .pill.stopped { background: #fffbeb; color: var(--warn); }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  main {
+    display: grid; grid-template-columns: 340px minmax(0, 1fr);
+    gap: 16px; padding: 16px; align-items: start;
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+  }
+  .panel h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 0 0 12px; font-weight: 700;
+  }
+  .panel + .panel { margin-top: 16px; }
+
+  label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .hint { font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 3px; }
+  input[type=text], input[type=number], textarea, select {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--border);
+    border-radius: 7px; font: inherit; font-size: 13px; background: #fff; color: inherit;
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid #bfdbfe; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 92px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .field { margin-bottom: 12px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .check { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+  .check input { margin-top: 3px; }
+  .check label { margin: 0; }
+
+  /* .btn: <a>도 버튼과 똑같이 보이게 (CSV 다운로드 링크) */
+  button, .btn {
+    display: inline-block; font: inherit; font-weight: 600; font-size: 13px;
+    cursor: pointer; padding: 8px 14px; border-radius: 7px;
+    border: 1px solid transparent; text-decoration: none;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:not(:disabled):hover { background: var(--accent-hover); }
+  .btn-ghost { background: #fff; border-color: var(--border); color: var(--text); }
+  .btn-ghost:not(:disabled):hover { background: #f3f4f6; }
+  .btn-danger { background: #fff; border-color: #fca5a5; color: var(--danger); }
+  .btn-danger:not(:disabled):hover { background: #fef2f2; }
+  .actions { display: flex; gap: 8px; }
+  .actions button { flex: 1; }
+
+  #console {
+    background: var(--console-bg); color: var(--console-text);
+    border-radius: var(--radius); padding: 12px 14px; height: 420px; overflow-y: auto;
+    font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+    font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+  }
+  #console .l-ok   { color: #6ee7b7; }
+  #console .l-err  { color: #fca5a5; }
+  #console .l-skip { color: #9aa3af; }
+  #console .l-head { color: #93c5fd; }
+  #console .l-http { color: #6b7280; }
+  #console .empty  { color: #6b7280; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+    cursor: pointer; user-select: none; white-space: nowrap; position: sticky; top: 0; background: var(--panel);
+  }
+  th:hover { color: var(--text); }
+  tbody tr:hover { background: #fafbfc; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.bio { max-width: 340px; color: var(--muted); font-size: 12px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .table-wrap { overflow-x: auto; max-height: 520px; overflow-y: auto; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar input { max-width: 240px; }
+  .empty-state { padding: 28px; text-align: center; color: var(--muted); font-size: 13px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; white-space: nowrap;
+  }
+  .badge.keep  { background: #ecfdf5; color: var(--ok); }
+  .badge.maybe { background: #fffbeb; color: var(--warn); }
+  .badge.drop  { background: #f3f4f6; color: var(--muted); }
+  .badge.none  { background: transparent; color: #c3c8d0; font-weight: 500; }
+  td .reason { color: var(--text); }
+  .banner {
+    display: none; padding: 9px 12px; border-radius: 7px; font-size: 13px; margin-bottom: 12px;
+    background: #fef2f2; color: var(--danger); border: 1px solid #fecaca;
+  }
+  .banner.show { display: block; }
+  .banner.info { background: #eff6ff; color: var(--accent); border-color: #bfdbfe; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>인플루언서 발굴 대시보드</h1>
+  <span class="pill" id="statePill"><span class="dot"></span><span id="stateText">대기 중</span></span>
+  <div class="spacer"></div>
+  <span class="pill" id="countPill">저장된 후보 0건</span>
+</header>
+
+<main>
+  <!-- ── 왼쪽: 설정 ─────────────────────────────── -->
+  <div>
+    <section class="panel">
+      <h2>수집 대상</h2>
+      <div id="banner" class="banner"></div>
+
+      <div class="field">
+        <label for="seeds">계정 목록 (seeds)</label>
+        <textarea id="seeds" placeholder="한 줄에 하나씩&#10;@username 또는 프로필 URL도 가능"></textarea>
+        <div class="hint">인스타 앱에서 #visitkorea 등으로 찾은 계정을 넣으세요.</div>
+        <div class="actions" style="margin-top:8px">
+          <button class="btn-ghost" id="saveSeeds" type="button">seeds.txt에 저장</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="expandFrom">팔로잉 확장 기준 계정</label>
+        <input type="text" id="expandFrom" placeholder="비우면 사용 안 함">
+        <div class="hint">이 계정이 팔로우하는 계정을 후보로 모읍니다(403으로 막힐 수 있음).</div>
+      </div>
+
+      <div class="field">
+        <label for="expandLimit">팔로잉에서 가져올 개수</label>
+        <input type="number" id="expandLimit" min="0" max="200">
+      </div>
+
+      <div class="check">
+        <input type="checkbox" id="useHashtag">
+        <label for="useHashtag">해시태그 자동 발굴 사용
+          <div class="hint">현재 인스타그램이 막아둔 API라 대개 실패합니다.</div>
+        </label>
+      </div>
+      <div class="field" id="hashtagField" hidden>
+        <label for="hashtags">해시태그 (쉼표 구분)</label>
+        <input type="text" id="hashtags">
+        <div class="field" style="margin-top:10px;margin-bottom:0">
+          <label for="postsPerHashtag">해시태그당 게시물 수</label>
+          <input type="number" id="postsPerHashtag" min="1" max="50">
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>필터 &amp; 실행</h2>
+      <div class="row2">
+        <div class="field">
+          <label for="minFollowers">최소 팔로워</label>
+          <input type="number" id="minFollowers" min="0" step="100">
+        </div>
+        <div class="field">
+          <label for="maxFollowers">최대 팔로워</label>
+          <input type="number" id="maxFollowers" min="1" step="1000">
+        </div>
+      </div>
+      <div class="field">
+        <label for="captionsPerAccount">수집할 최근 캡션 수</label>
+        <input type="number" id="captionsPerAccount" min="0" max="12">
+        <div class="hint">LLM 판정 정확도가 크게 올라갑니다. 계정당 요청 1회·대기 1회가 추가됩니다. 0이면 수집 안 함.</div>
+      </div>
+      <div class="field">
+        <label for="delay">요청 간 대기 (초)</label>
+        <input type="number" id="delay" min="1" max="60" step="0.5">
+        <div class="hint">차단 회피용. 낮추지 마세요. 계정 1건당 이만큼 걸립니다.</div>
+      </div>
+      <div class="check">
+        <input type="checkbox" id="verboseHttp">
+        <label for="verboseHttp">상세 HTTP 로그
+          <div class="hint">403이 어디서 나는지 추적할 때만 켜세요.</div>
+        </label>
+      </div>
+      <div class="actions">
+        <button class="btn-primary" id="runBtn" type="button">발굴 시작</button>
+        <button class="btn-danger" id="stopBtn" type="button" disabled>중지</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>LLM 판정 (1차 거르기)</h2>
+      <p class="hint" style="margin:-4px 0 12px">
+        수집된 후보를 Claude가 훑어 <strong>널널하게</strong> 걸러냅니다. 최종 판단이 아니라
+        사람이 볼 목록을 좁히는 단계라, 애매하면 <code>maybe</code>로 남깁니다.
+      </p>
+      <div class="field">
+        <label for="judgeModel">판정 모델</label>
+        <select id="judgeModel"></select>
+        <div class="hint" id="modelNote"></div>
+      </div>
+
+      <!-- 로컬(Ollama): 설치된 모델 중에서 고른다 -->
+      <div class="field" id="localModelField" hidden>
+        <label for="localModel">로컬 모델</label>
+        <select id="localModel"></select>
+        <div class="hint" id="localHint"></div>
+      </div>
+
+      <!-- 원격 프로바이더: 모델 ID를 직접 지정할 수 있게 -->
+      <div class="field" id="modelIdField">
+        <label for="modelId">모델 ID</label>
+        <input type="text" id="modelId" placeholder="비우면 기본값 사용">
+        <div class="hint">계정에서 쓸 수 있는 다른 모델로 바꿔도 됩니다.</div>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="judgeConcurrency">동시 요청 수</label>
+          <input type="number" id="judgeConcurrency" min="1" max="8" value="4">
+        </div>
+        <div class="field">
+          <label for="judgeMax">최대 판정 개수</label>
+          <input type="number" id="judgeMax" min="0" value="0">
+          <div class="hint">0 = 전체</div>
+        </div>
+      </div>
+      <div class="check">
+        <input type="checkbox" id="rejudge">
+        <label for="rejudge">이미 판정한 계정도 다시 판정
+          <div class="hint">루브릭을 바꿔 전체를 다시 돌릴 때만 켜세요.</div>
+        </label>
+      </div>
+      <div class="actions">
+        <button class="btn-primary" id="judgeBtn" type="button">판정 시작</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ── 오른쪽: 로그 + 결과 ───────────────────── -->
+  <div>
+    <section class="panel">
+      <h2>실행 로그</h2>
+      <div id="console"><span class="empty">발굴을 시작하면 진행 상황이 여기에 표시됩니다.</span></div>
+    </section>
+
+    <section class="panel">
+      <h2>후보 목록</h2>
+      <div class="toolbar">
+        <input type="text" id="search" placeholder="계정명 · 이름 · 소개글 검색">
+        <span class="spacer"></span>
+        <button class="btn-ghost" id="refreshBtn" type="button">새로고침</button>
+        <a class="btn btn-ghost" id="downloadBtn" href="/api/candidates.csv">CSV 다운로드</a>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-key="score" class="num">점수</th>
+              <th data-key="fit">판정</th>
+              <th data-key="username">계정</th>
+              <th data-key="full_name">이름</th>
+              <th data-key="followers" class="num">팔로워</th>
+              <th data-key="hangul_ratio" class="num">한글</th>
+              <th data-key="email">이메일</th>
+              <th data-key="reason">판정 근거 / 소개글</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="empty-state" id="emptyState">아직 저장된 후보가 없습니다.</div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let rows = [];              // 후보 전체 (CSV + 이번 실행에서 추가된 것)
+let sortKey = "followers";
+let sortDir = -1;           // -1 내림차순, 1 오름차순
+let evtSource = null;
+
+// ── 상태 표시 ──────────────────────────────────
+const STATE_LABEL = {
+  idle: "대기 중", running: "실행 중", done: "완료",
+  error: "오류", stopped: "중지됨",
+};
+let jobKind = "";  // "discover" | "judge" — 어느 버튼을 잠글지 결정
+function setState(state, kind) {
+  if (kind !== undefined) jobKind = kind;
+  const pill = $("statePill");
+  pill.className = "pill " + (state === "idle" ? "" : state);
+  const label = STATE_LABEL[state] || state;
+  const prefix = state === "running" && jobKind === "judge" ? "판정 " : "";
+  $("stateText").textContent = prefix + label;
+  const running = state === "running";
+  // 잡은 한 번에 하나만 돈다 — 실행 중에는 양쪽 시작 버튼을 모두 잠근다.
+  $("runBtn").disabled = running;
+  $("judgeBtn").disabled = running;
+  $("stopBtn").disabled = !running;
+  $("runBtn").textContent = running && jobKind === "discover" ? "실행 중..." : "발굴 시작";
+  $("judgeBtn").textContent = running && jobKind === "judge" ? "판정 중..." : "판정 시작";
+}
+function banner(msg, kind = "error") {
+  const el = $("banner");
+  el.textContent = msg;
+  el.className = "banner show" + (kind === "info" ? " info" : "");
+  if (kind === "info") setTimeout(() => el.classList.remove("show"), 3000);
+}
+function clearBanner() { $("banner").classList.remove("show"); }
+
+// ── 로그 콘솔 ──────────────────────────────────
+// 로그 줄의 성격에 따라 색을 입혀 훑어보기 쉽게 한다.
+function lineClass(line) {
+  if (line.includes("✔")) return "l-ok";
+  if (line.includes("[HTTP]")) return "l-http";
+  if (/실패|오류|중단|유효하지/.test(line)) return "l-err";
+  if (line.trimStart().startsWith("- ")) return "l-skip";
+  if (line.startsWith("[")) return "l-head";
+  return "";
+}
+function appendLog(lines) {
+  const box = $("console");
+  const empty = box.querySelector(".empty");
+  if (empty) empty.remove();
+  // 사용자가 위로 스크롤해 과거 로그를 읽는 중이면 자동 스크롤하지 않는다.
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  const frag = document.createDocumentFragment();
+  for (const line of lines) {
+    const div = document.createElement("div");
+    div.className = lineClass(line);
+    div.textContent = line || " ";
+    frag.appendChild(div);
+  }
+  box.appendChild(frag);
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+function resetLog() { $("console").innerHTML = ""; }
+
+// ── 결과 테이블 ────────────────────────────────
+function num(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+function renderTable() {
+  const q = $("search").value.trim().toLowerCase();
+  const filtered = q
+    ? rows.filter((r) =>
+        `${r.username} ${r.full_name} ${r.biography} ${r.email}`.toLowerCase().includes(q))
+    : rows;
+
+  const numericKeys = new Set(["followers", "posts", "hangul_ratio", "score"]);
+  // 미판정(빈 문자열)은 정렬 방향과 무관하게 항상 아래로 — 위쪽은 검토할 것만 보이게.
+  const sorted = [...filtered].sort((a, b) => {
+    const [x, y] = [a[sortKey] ?? "", b[sortKey] ?? ""];
+    const [ex, ey] = [x === "" || x == null, y === "" || y == null];
+    if (ex !== ey) return ex ? 1 : -1;
+    const cmp = numericKeys.has(sortKey)
+      ? num(x) - num(y)
+      : String(x).localeCompare(String(y), "ko");
+    return cmp * sortDir;
+  });
+
+  const tbody = $("tbody");
+  tbody.innerHTML = "";
+  for (const r of sorted) {
+    const tr = document.createElement("tr");
+    // 판정된 계정은 근거를, 아직 안 된 계정은 소개글을 보여준다.
+    const detail = r.reason
+      ? `<span class="reason">${escapeHtml(r.reason)}</span>`
+      : escapeHtml(r.biography || "");
+    tr.innerHTML = `
+      <td class="num">${r.score === "" || r.score == null ? "-" : num(r.score)}</td>
+      <td>${fitBadge(r.fit)}</td>
+      <td><a href="${escapeAttr(r.profile_url)}" target="_blank" rel="noopener">@${escapeHtml(r.username)}</a></td>
+      <td>${escapeHtml(r.full_name)}</td>
+      <td class="num">${num(r.followers).toLocaleString()}</td>
+      <td class="num">${Math.round(num(r.hangul_ratio) * 100)}%</td>
+      <td>${r.email ? `<a href="mailto:${escapeAttr(r.email)}">${escapeHtml(r.email)}</a>` : "-"}</td>
+      <td class="bio">${detail}</td>`;
+    tbody.appendChild(tr);
+  }
+  $("emptyState").style.display = sorted.length ? "none" : "block";
+  $("emptyState").textContent = rows.length
+    ? "검색 결과가 없습니다."
+    : "아직 저장된 후보가 없습니다.";
+  const judged = rows.filter((r) => r.fit).length;
+  $("countPill").textContent = `후보 ${rows.length}건 · 판정 ${judged}건`;
+}
+// keep / maybe / drop 을 한눈에 구분되는 배지로.
+function fitBadge(fit) {
+  if (!fit) return `<span class="badge none">미판정</span>`;
+  const label = { keep: "적합", maybe: "보류", drop: "제외" }[fit] || fit;
+  return `<span class="badge ${escapeAttr(fit)}">${escapeHtml(label)}</span>`;
+}
+// 인스타 소개글에는 임의의 문자가 들어오므로 항상 이스케이프해서 넣는다.
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+const escapeAttr = escapeHtml;
+
+async function loadCandidates() {
+  const res = await fetch("/api/candidates");
+  const data = await res.json();
+  rows = data.rows;
+  renderTable();
+}
+
+// ── SSE 연결 ───────────────────────────────────
+function connectStream() {
+  if (evtSource) evtSource.close();
+  evtSource = new EventSource("/api/stream");
+  evtSource.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "history") {
+      resetLog();
+      appendLog(msg.lines);
+      setState(msg.state);
+      if (msg.state !== "running") evtSource.close();
+    } else if (msg.type === "log") {
+      appendLog([msg.data]);
+    } else if (msg.type === "row") {
+      // 발굴 잡은 새 후보를, 판정 잡은 기존 후보의 판정 결과를 보낸다.
+      const existing = rows.find((r) => r.username === msg.data.username);
+      if (existing) Object.assign(existing, msg.data);
+      else rows.push(msg.data);
+      renderTable();
+    } else if (msg.type === "state") {
+      setState(msg.data);
+      evtSource.close();
+      if (msg.stats && msg.stats.error) banner(msg.stats.error);
+      loadCandidates();
+    }
+  };
+  // 잡이 끝나 서버가 스트림을 닫으면 EventSource가 자동 재연결을 시도한다.
+  // 이미 종료 상태를 받았으므로 여기서 확실히 닫는다.
+  evtSource.onerror = () => { if (evtSource.readyState === EventSource.CLOSED) evtSource = null; };
+}
+
+// ── 폼 ─────────────────────────────────────────
+function formConfig() {
+  return {
+    seeds: $("seeds").value,
+    expand_from: $("expandFrom").value,
+    expand_limit: Number($("expandLimit").value),
+    use_hashtag_discovery: $("useHashtag").checked,
+    hashtags: $("hashtags").value.split(",").map((s) => s.trim()).filter(Boolean),
+    posts_per_hashtag: Number($("postsPerHashtag").value),
+    captions_per_account: Number($("captionsPerAccount").value),
+    min_followers: Number($("minFollowers").value),
+    max_followers: Number($("maxFollowers").value),
+    delay: Number($("delay").value),
+    verbose_http: $("verboseHttp").checked,
+  };
+}
+
+// ── 판정 모델 선택 ─────────────────────────────
+let presets = [];       // 서버가 준 프리셋 목록 (키 보유 여부 포함)
+let localModels = [];   // Ollama에 설치된 모델
+
+async function loadModels() {
+  const data = await (await fetch("/api/judge/models")).json();
+  presets = data.presets;
+  localModels = data.local_models;
+
+  const sel = $("judgeModel");
+  const keep = sel.value;  // 새로고침 후에도 고른 값 유지
+  sel.innerHTML = "";
+  for (const p of presets) {
+    const opt = document.createElement("option");
+    opt.value = p.key;
+    // 준비 안 된 항목도 고를 수는 있게 두되, 왜 안 되는지 라벨에 표시한다.
+    opt.textContent = p.ready ? p.label : `${p.label} — 설정 필요`;
+    sel.appendChild(opt);
+  }
+  sel.value = keep && presets.some((p) => p.key === keep) ? keep : data.default;
+
+  const lsel = $("localModel");
+  lsel.innerHTML = "";
+  if (localModels.length) {
+    for (const m of localModels) {
+      const opt = document.createElement("option");
+      opt.value = m; opt.textContent = m;
+      lsel.appendChild(opt);
+    }
+    $("localHint").textContent = `Ollama에 설치된 모델 ${localModels.length}개`;
+  } else {
+    $("localHint").textContent =
+      "Ollama가 실행 중이 아니거나 받아둔 모델이 없습니다. `ollama serve` 후 `ollama pull <모델>`.";
+  }
+  onModelChange();
+}
+
+function onModelChange() {
+  const p = presets.find((x) => x.key === $("judgeModel").value);
+  if (!p) return;
+  const isLocal = p.key === "local";
+  $("localModelField").hidden = !isLocal;
+  $("modelIdField").hidden = isLocal;   // 로컬은 설치 목록에서 고르므로 직접입력 불필요
+  $("modelId").placeholder = p.model ? `비우면 ${p.model}` : "모델 ID";
+  // 키가 없으면 실행하기 전에 미리 알려준다.
+  $("modelNote").textContent = p.ready
+    ? p.note
+    : (isLocal
+        ? "Ollama에 연결할 수 없습니다."
+        : `${p.api_key_env}를 instacrawl/.env에 넣어야 실행됩니다. — ${p.note}`);
+}
+
+async function init() {
+  const cfg = await (await fetch("/api/config")).json();
+  const d = cfg.defaults;
+  $("seeds").value = cfg.seeds;
+  $("expandFrom").value = d.expand_from;
+  $("expandLimit").value = d.expand_limit;
+  $("useHashtag").checked = d.use_hashtag_discovery;
+  $("hashtags").value = d.hashtags.join(", ");
+  $("postsPerHashtag").value = d.posts_per_hashtag;
+  $("captionsPerAccount").value = d.captions_per_account;
+  $("minFollowers").value = d.min_followers;
+  $("maxFollowers").value = d.max_followers;
+  $("delay").value = d.delay;
+  $("verboseHttp").checked = d.verbose_http;
+  $("hashtagField").hidden = !d.use_hashtag_discovery;
+
+  await loadCandidates();
+  await loadModels();
+
+  // 새로고침해도 진행 중인 잡에 다시 붙는다.
+  const st = await (await fetch("/api/status")).json();
+  setState(st.state, st.kind);
+  if (st.state !== "idle") connectStream();
+}
+
+$("useHashtag").addEventListener("change", (e) => {
+  $("hashtagField").hidden = !e.target.checked;
+});
+$("judgeModel").addEventListener("change", onModelChange);
+$("search").addEventListener("input", renderTable);
+$("refreshBtn").addEventListener("click", loadCandidates);
+
+document.querySelectorAll("th[data-key]").forEach((th) => {
+  th.addEventListener("click", () => {
+    const key = th.dataset.key;
+    sortDir = sortKey === key ? -sortDir : -1;
+    sortKey = key;
+    renderTable();
+  });
+});
+
+$("saveSeeds").addEventListener("click", async () => {
+  const res = await fetch("/api/seeds", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ seeds: $("seeds").value }),
+  });
+  const data = await res.json();
+  banner(`seeds.txt에 계정 ${data.saved}개를 저장했습니다.`, "info");
+});
+
+$("runBtn").addEventListener("click", async () => {
+  clearBanner();
+  const res = await fetch("/api/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(formConfig()),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    banner(err.detail || "실행을 시작하지 못했습니다.");
+    return;
+  }
+  resetLog();
+  setState("running", "discover");
+  connectStream();
+});
+
+$("judgeBtn").addEventListener("click", async () => {
+  clearBanner();
+  const res = await fetch("/api/judge/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      preset: $("judgeModel").value,
+      model: $("judgeModel").value === "local"
+        ? $("localModel").value
+        : $("modelId").value,
+      concurrency: Number($("judgeConcurrency").value),
+      rejudge: $("rejudge").checked,
+      max_accounts: Number($("judgeMax").value),
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    banner(err.detail || "판정을 시작하지 못했습니다.");
+    return;
+  }
+  resetLog();
+  setState("running", "judge");
+  connectStream();
+});
+
+$("stopBtn").addEventListener("click", async () => {
+  $("stopBtn").disabled = true;
+  const res = await fetch("/api/stop", { method: "POST" });
+  if (!res.ok) $("stopBtn").disabled = false;
+});
+
+init();
+</script>
+</body>
+</html>

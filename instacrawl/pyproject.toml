@@ -1,0 +1,15 @@
+[project]
+name = "instacrawl"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "instaloader>=4.11",
+    "browser-cookie3>=0.19",
+    "python-dotenv>=1.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "anthropic>=0.69",
+    "openai>=1.54",
+]
