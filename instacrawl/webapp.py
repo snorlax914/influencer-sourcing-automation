@@ -38,6 +38,7 @@ from judge import (
     list_local_models,
     load_verdicts,
     run_judging,
+    score_breakdown,
 )
 
 STATIC_DIR = BASE_DIR / "static"
@@ -365,16 +366,22 @@ def candidates() -> dict:
     rows = []
     for row in read_candidates():
         verdict = verdict_by_user.get(row["username"], {})
+        # 채점된(선별 합격) 계정만 계정별 채점 표를 곁들인다. 신호로 다시 계산하므로
+        # CSV에 표를 저장할 필요가 없다.
+        breakdown = score_breakdown(verdict) if verdict.get("tier") else None
         rows.append(
             {
                 **row,
+                "screen": verdict.get("screen", ""),
+                "screen_reason": verdict.get("screen_reason", ""),
                 "fit": verdict.get("fit", ""),
                 "score": verdict.get("score", ""),
-                "confidence": verdict.get("confidence", ""),
+                "grade": verdict.get("grade", ""),
+                "tier": verdict.get("tier", ""),
+                "gate": verdict.get("gate", ""),
+                "score_reason": verdict.get("score_reason", ""),
                 "reason": verdict.get("reason", ""),
-                "content_theme": verdict.get("content_theme", ""),
-                "korea_relevance": verdict.get("korea_relevance", ""),
-                "is_foreigner": verdict.get("is_foreigner", ""),
+                "breakdown": breakdown,
             }
         )
     return {"rows": rows, "count": len(rows), "judged": len(verdict_by_user)}
@@ -389,6 +396,12 @@ def download_csv() -> FileResponse:
 
 
 if __name__ == "__main__":
-    print("대시보드: http://127.0.0.1:8000")
+    # 기본은 로컬 전용. 같은 공유기 안의 다른 기기에서 열어야 하면
+    # HOST=0.0.0.0 으로 띄운다(인증이 없으니 신뢰하는 네트워크에서만).
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8000"))
+    print(f"대시보드: http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}")
+    if host == "0.0.0.0":
+        print("같은 네트워크의 다른 기기에서는 이 PC의 IP 주소로 접속하세요.")
     # reload 없음: 잡이 메모리에 있어 리로드되면 실행 중 작업이 통째로 날아간다.
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
+    uvicorn.run(app, host=host, port=port, log_level="warning")

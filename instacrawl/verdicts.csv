@@ -1,0 +1,16 @@
+﻿username,screen,screen_reason,tier,grade,gate,caption_lang,bio_lang,busan_ratio,korea_ratio,food_ratio,fit,score,score_reason,reason
+anzu.1103,fail,"계정이 일본에 기반을 두고 있으며, 음식·여행·일상과의 접점이 없고 부산과도 관련이 없습니다.",,,,,,,,,drop,,,
+chuchuperoaichu,pass,"개인 계정이며 부산에서 활동하며 한국어로 활발히 소통하고 있으며, 부산 관련 콘텐츠와 TV 출연 등 지역 연계성이 있음",small,C,pass,korean,mixed,over30,none,under5,maybe,42,[소형] 부산 30 + 한국 0 + 캡션 0 + 바이오 5 + 음식 0 = 35/83 → 42점 (C),캡션 3개 중 부산 2·한국 0·음식 0 · 캡션 한국어·바이오 혼용
+gyongryong_,pass,개인 계정으로 부산 관련 직업 정보와 일상 활동이 언급되어 있어 접점이 있음,small,D,pass,korean,mixed,b5_15,none,under5,drop,23,[소형] 부산 14 + 한국 0 + 캡션 0 + 바이오 5 + 음식 0 = 19/83 → 23점 (D),캡션 3개 중 부산 0·한국 0·음식 0 · 캡션 한국어·바이오 혼용
+hx_jju,pass,계정소개글에 'SBS 부산경남 기상캐스터'라는 명확한 한국 부산 지역 연계 정보가 포함되어 있어 지역 접점이 확인됩니다.,small,D,pass,korean,korean,b5_15,none,under5,drop,17,[소형] 부산 14 + 한국 0 + 캡션 0 + 바이오 0 + 음식 0 = 14/83 → 17점 (D),캡션 3개 중 부산 0·한국 0·음식 0 · 캡션 한국어·바이오 한국어
+merrysuin_aunt,fail,"상업/브랜드 계정으로, 부산 지역 음식·여행·일상과 관련성이 없습니다.",,,,,,,,,drop,,,
+shuhana1225,pass,개인 계정으로 한국에서의 생활과 음식 관련 콘텐츠를 보유하고 있어 부산 외식업체 마케팅에 적합함.,small,D,fail,mixed,mixed,zero,over30,under5,drop,0,지역 게이트 탈락(소형·부산 조건 미달) → 0점 (D),캡션 3개 중 부산 0·한국 1·음식 0 · 캡션 혼용·바이오 혼용
+suzunoya_kimono,fail,"개인 운영 계정이 아니고, 한국(부산)과 음식·여행·일상과 접점이 없음.",,,,,,,,,drop,,,
+ydesig_n,fail,"상업적 인테리어 디자인 계정으로, 음식·여행·일상과의 접점이 없고 부산과도 관련이 없습니다.",,,,,,,,,drop,,,
+anzu.1103,fail,"계정명 및 활동 내용이 일본 관련으로, 한국(특히 부산)과 음식·여행·일상과의 접점이 없음.",,,,,,,,,drop,,,
+gyongryong_,fail,"개인 계정이지만 음식·여행·일상과의 접점이 없고, 부산 관련 콘텐츠도 확인되지 않음.",,,,,,,,,drop,,,
+hx_jju,pass,"한국 부산에 기상캐스터로 활동 중인 개인 계정으로, 일상과 정보 제공을 하는 계정으로 판단됨.",small,D,pass,korean,korean,b5_15,none,under5,drop,17,[소형] 부산 14 + 한국 0 + 캡션 0 + 바이오 0 + 음식 0 = 14/83 → 17점 (D),캡션 3개 중 부산 0·한국 0·음식 0 · 캡션 한국어·바이오 한국어
+merrysuin_aunt,fail,"대구 지역의 아동복 및 여성복 판매업체로, 부산과 음식·여행·일상과의 접점이 없음.",,,,,,,,,drop,,,
+shuhana1225,pass,개인 계정으로 한국생활 중이면서 음식과 일상과 관련된 콘텐츠를 게재하고 있어 부산 외식업체 마케팅에 적합한 타겟,small,D,fail,mixed,mixed,zero,over30,under5,drop,0,지역 게이트 탈락(소형·부산 조건 미달) → 0점 (D),캡션 3개 중 부산 0·한국 1·음식 0 · 캡션 혼용·바이오 혼용
+skzkxk333,pass,"계정은 부산의 음식 및 여행 관련 콘텐츠를 중심으로 운영하고 있으며, 한국(부산)과 음식·여행에 대한 접점이 명확하게 보입니다.",small,A,pass,foreign,foreign,over30,seoul_small,over50,keep,98,[소형] 부산 30 + 한국 1 + 캡션 15 + 바이오 10 + 음식 25 = 81/83 → 98점 (A),캡션 3개 중 부산 3·한국 0·음식 3 · 캡션 외국어·바이오 외국어
+ydesig_n,fail,상업/브랜드 계정(인테리어 서비스 제공),,,,,,,,,drop,,,
