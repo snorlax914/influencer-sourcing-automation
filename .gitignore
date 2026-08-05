@@ -4,6 +4,10 @@ instacrawl/session-*
 
 # 크롤링 산출물 (실제 계정 개인정보 포함)
 instacrawl/candidates.csv
+instacrawl/reels.csv
+
+# Claude Code 개인 설정 (허용 명령 목록 등 — 팀원마다 다름)
+.claude/settings.local.json
 
 # 파이썬
 .venv/

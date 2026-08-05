@@ -8,6 +8,9 @@
 
 동시 실행은 막는다. instaloader 세션(L)이 프로세스 전역 하나뿐이라 잡을
 병렬로 돌리면 쿠키/요청 로깅이 서로 섞이고, 인스타 차단 위험도 커진다.
+
+릴스 조회수(/api/reels/*)만은 예외로, 이 서버가 직접 수집하지 않고 요청 큐만
+들고 있는다. 실제 추출은 Claude Code가 Claude for Chrome으로 한다 — reels.py 참고.
 """
 
 import json
@@ -40,6 +43,8 @@ from judge import (
     run_judging,
     score_breakdown,
 )
+from reels import load_reels, parse_view_count, reels_url, save_reel
+from reels import queue as reels_queue
 
 STATIC_DIR = BASE_DIR / "static"
 # 새로고침해도 지난 로그를 볼 수 있도록 잡별로 보관하는 최대 줄 수.
@@ -213,6 +218,31 @@ class JudgeRequest(BaseModel):
         )
 
 
+class ReelsRequestBody(BaseModel):
+    """대시보드에서 누른 [릴스] 버튼 — 계정 하나 또는 여러 개."""
+
+    usernames: list[str] = Field(default_factory=list)
+
+
+class ReelsResultBody(BaseModel):
+    """Claude for Chrome이 읽어온 결과.
+
+    views에는 화면에 보이는 그대로("1.2만", "12.3K", 3456) 넣어도 된다.
+    서버가 parse_view_count로 정수화하므로 클라이언트가 단위를 해석할 필요가 없다.
+    """
+
+    username: str
+    views: list[str | int | float] = Field(default_factory=list)
+    # 고정(📌) 릴스는 여기에 따로 넣는다. 통계에서 빠지고 표에는 참고용으로만 뜬다.
+    pinned: list[str | int | float] = Field(default_factory=list)
+    note: str = ""
+
+
+class ReelsFailBody(BaseModel):
+    username: str
+    error: str = "추출에 실패했습니다."
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
     return HTMLResponse((STATIC_DIR / "index.html").read_text(encoding="utf-8"))
@@ -309,6 +339,92 @@ def verdicts() -> dict:
     return {"rows": list(rows.values()), "count": len(rows)}
 
 
+# ── 릴스 조회수 ────────────────────────────────────────
+# 서버는 큐만 들고 있고, 실제 추출은 Claude Code가 Claude for Chrome으로 한다.
+# 자세한 흐름은 reels.py 상단 주석 참고.
+
+
+@app.get("/api/reels")
+def reels_all() -> dict:
+    """수집된 조회수 + 현재 대기열. 대시보드가 주기적으로 폴링한다."""
+    rows = load_reels()
+    return {"rows": rows, "queue": reels_queue.snapshot(), "count": len(rows)}
+
+
+@app.post("/api/reels/request")
+def reels_request(req: ReelsRequestBody) -> dict:
+    known = {row["username"] for row in read_candidates()}
+    unknown = [u.strip().lstrip("@") for u in req.usernames if u.strip().lstrip("@") not in known]
+    if unknown:
+        raise HTTPException(404, f"후보 목록에 없는 계정입니다: {', '.join(unknown)}")
+    added = reels_queue.add(req.usernames)
+    return {"queued": added, "queue": reels_queue.snapshot()}
+
+
+@app.delete("/api/reels/request/{username}")
+def reels_cancel(username: str) -> dict:
+    if not reels_queue.remove(username):
+        raise HTTPException(404, "대기열에 없는 계정입니다.")
+    return {"queue": reels_queue.snapshot()}
+
+
+@app.delete("/api/reels/queue")
+def reels_clear() -> dict:
+    return {"cleared": reels_queue.clear(), "queue": reels_queue.snapshot()}
+
+
+@app.get("/api/reels/queue")
+def reels_pending() -> dict:
+    """Claude Code가 '지금 할 일'을 가져가는 곳.
+
+    아직 손대지 않은(queued) 요청만 준다. 이미 running인 건 다른 실행이
+    처리 중이라는 뜻이라 중복해서 크롬을 열지 않도록 뺀다.
+    """
+    pending = reels_queue.pending()
+    return {"pending": pending, "count": len(pending), "all": reels_queue.snapshot()}
+
+
+@app.post("/api/reels/claim")
+def reels_claim(req: ReelsRequestBody) -> dict:
+    """추출을 시작했다고 표시한다(화면에 '추출 중'으로 보이게)."""
+    claimed = [c for u in req.usernames if (c := reels_queue.mark_running(u))]
+    return {"claimed": claimed}
+
+
+@app.post("/api/reels/result")
+def reels_result(req: ReelsResultBody) -> dict:
+    """추출 결과 저장. 조회수 단위 해석은 여기서 한다."""
+    username = req.username.strip().lstrip("@")
+    if not username:
+        raise HTTPException(400, "계정명이 비어 있습니다.")
+    dropped: list[str] = []
+
+    def parse_all(raws) -> list[int]:
+        out = []
+        for raw in raws:
+            parsed = parse_view_count(raw)
+            if parsed is None:
+                dropped.append(str(raw))
+            else:
+                out.append(parsed)
+        return out
+
+    views = parse_all(req.views)
+    pinned = parse_all(req.pinned)
+    if not views and not req.note:
+        # 빈 결과를 note 없이 저장하면 '릴스 없음'인지 '읽기 실패'인지 알 수 없다.
+        raise HTTPException(400, "읽어낸 조회수가 없습니다. note에 이유를 적어 주세요.")
+    row = save_reel(username, views, req.note, pinned)
+    reels_queue.mark_done(username)
+    return {"saved": row, "dropped": dropped, "queue": reels_queue.snapshot()}
+
+
+@app.post("/api/reels/fail")
+def reels_fail(req: ReelsFailBody) -> dict:
+    """비공개 계정·로그인 필요 등으로 못 읽었을 때. 화면에 이유를 남긴다."""
+    return {"item": reels_queue.mark_error(req.username, req.error), "queue": reels_queue.snapshot()}
+
+
 @app.post("/api/stop")
 def stop() -> dict:
     job = current_job
@@ -363,9 +479,11 @@ def candidates() -> dict:
     건드리지 않기 위해서다. 화면에서는 한 테이블로 보는 편이 낫다.
     """
     verdict_by_user = load_verdicts()
+    reels_by_user = load_reels()
     rows = []
     for row in read_candidates():
         verdict = verdict_by_user.get(row["username"], {})
+        reel = reels_by_user.get(row["username"], {})
         # 채점된(선별 합격) 계정만 계정별 채점 표를 곁들인다. 신호로 다시 계산하므로
         # CSV에 표를 저장할 필요가 없다.
         breakdown = score_breakdown(verdict) if verdict.get("tier") else None
@@ -382,9 +500,20 @@ def candidates() -> dict:
                 "score_reason": verdict.get("score_reason", ""),
                 "reason": verdict.get("reason", ""),
                 "breakdown": breakdown,
+                # 릴스 조회수 — 정렬에 쓰는 대표값만 평평하게 꺼내 두고,
+                # 나머지(최대/최소/원본 목록)는 reels 안에 그대로 둔다.
+                "views_median": reel.get("views_median", ""),
+                "reels_count": reel.get("reels_count", ""),
+                "reels": reel or None,
+                "reels_url": reels_url(row["username"]),
             }
         )
-    return {"rows": rows, "count": len(rows), "judged": len(verdict_by_user)}
+    return {
+        "rows": rows,
+        "count": len(rows),
+        "judged": len(verdict_by_user),
+        "reels_queue": reels_queue.snapshot(),
+    }
 
 
 @app.get("/api/candidates.csv")
@@ -396,9 +525,10 @@ def download_csv() -> FileResponse:
 
 
 if __name__ == "__main__":
-    # 기본은 로컬 전용. 같은 공유기 안의 다른 기기에서 열어야 하면
-    # HOST=0.0.0.0 으로 띄운다(인증이 없으니 신뢰하는 네트워크에서만).
-    host = os.environ.get("HOST", "127.0.0.1")
+    # 기본으로 모든 인터페이스에 바인딩한다. 같은 공유기 안의 동료가 바로 열 수
+    # 있어야 해서다. 인증이 없으니 신뢰하는 네트워크에서만 띄운다.
+    # 로컬 전용으로 되돌리려면 HOST=127.0.0.1.
+    host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "8000"))
     print(f"대시보드: http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}")
     if host == "0.0.0.0":

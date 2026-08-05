@@ -106,17 +106,26 @@
   #console .l-http { color: #6b7280; }
   #console .empty  { color: #6b7280; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  /* 행마다 줄 수가 달라(소개글·판정 이유가 여러 줄) 위 정렬이면 짧은 칸이 위로 떠 보인다.
+     가운데 정렬해야 한 행이 하나로 읽힌다. 펼침 행만 위 정렬로 되돌린다. */
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr.detail-row > td { vertical-align: top; }
   th {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+    font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
     cursor: pointer; user-select: none; white-space: nowrap; position: sticky; top: 0; background: var(--panel);
+    /* z-index가 없으면 뒤에 오는 positioned 요소(펼침 패널의 차트 막대·기준선)가
+       스크롤 시 헤더 위로 그려진다. 헤더를 항상 위에 둔다. */
+    z-index: 2;
   }
   th:hover { color: var(--text); }
   tbody tr:hover { background: #fafbfc; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* 등급 배지와 '게이트' 표시가 한 줄에 붙어 있어야 한다 — 좁으면 줄바꿈되며 잘렸다. */
+  td.grade-col { white-space: nowrap; }
   td.bio { max-width: 300px; color: var(--muted); font-size: 12px; }
-  td.reason-col { max-width: 340px; }
+  /* 소개글·판정 이유는 본문이 커져도 원래 크기로 — 표가 글 덩어리가 되지 않게 */
+  td.reason-col { max-width: 340px; font-size: 12.5px; }
   td.reason-col .reason { color: var(--text); }
   td.reason-col .no-reason { color: #c3c8d0; }
   /* 채점 이유(점수 내역) 아래에 붙는 신호 근거 — 흐리게 보조로 */
@@ -124,12 +133,16 @@
 
   /* 계정별 채점 표(펼침) */
   tr.main-row { cursor: pointer; }
+  /* 펼침 화살표는 전용 첫 칸에 둔다 — 선별 배지와 섞이면 어느 행이 펼쳐지는지
+     눈에 안 들어온다. */
+  .caret-col { width: 30px; padding-right: 0; text-align: center; cursor: default; }
   tr.main-row .caret {
-    display: inline-block; width: 12px; margin-right: 2px; color: var(--muted);
-    transition: transform .15s; font-size: 10px;
+    display: inline-block; color: var(--muted);
+    transition: transform .15s; font-size: 19px; line-height: 1;
   }
+  tr.main-row:hover .caret { color: var(--accent); }
   tr.main-row.open .caret { transform: rotate(90deg); }
-  tr.detail-row > td { background: #f7f9fb; padding: 6px 20px 18px 34px; border-bottom: 1px solid var(--border); }
+  tr.detail-row > td { background: #f7f9fb; padding: 16px 20px 20px 26px; border-bottom: 1px solid var(--border); }
   .bd-table { width: 100%; max-width: 880px; border-collapse: collapse; margin: 10px 0 8px; font-size: 13px; }
   .bd-table th, .bd-table td {
     border-bottom: 1px solid var(--border); padding: 8px 18px; text-align: left;
@@ -194,8 +207,8 @@
   .toolbar input { max-width: 240px; }
   .empty-state { padding: 28px; text-align: center; color: var(--muted); font-size: 13px; }
   .badge {
-    display: inline-block; padding: 2px 8px; border-radius: 999px;
-    font-size: 11px; font-weight: 700; white-space: nowrap;
+    display: inline-block; padding: 3px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
   }
   .badge.keep  { background: #ecfdf5; color: var(--ok); }
   .badge.maybe { background: #fffbeb; color: var(--warn); }
@@ -207,7 +220,7 @@
   .badge.grade-C { background: #fffbeb; color: var(--warn); }
   .badge.grade-D { background: #f3f4f6; color: var(--muted); }
   /* 지역 게이트 탈락 표시 */
-  .gate-fail { display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; color: var(--danger); }
+  .gate-fail { display: inline-block; margin-left: 5px; font-size: 11px; font-weight: 700; color: var(--danger); }
   td .reason { color: var(--text); }
 
   /* 판정 직후 그 행을 잠깐 강조해, 방금 채워진 계정이 눈에 들어오게 한다. */
@@ -249,6 +262,131 @@
   }
   .banner.show { display: block; }
   .banner.info { background: #eff6ff; color: var(--accent); border-color: #bfdbfe; }
+
+  /* ── 릴스 조회수 열 ─────────────────────────── */
+  td.reels-col { white-space: nowrap; }
+  .reels-btn {
+    padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px;
+    background: #fff; border: 1px solid var(--border); color: var(--muted); cursor: pointer;
+  }
+  .reels-btn:not(:disabled):hover { background: #eff6ff; border-color: #bfdbfe; color: var(--accent); }
+  /* 대기/추출 중 — 눌러도 소용없으니 버튼 대신 상태 칩으로 보여준다. */
+  .reels-chip {
+    display: inline-block; padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; background: #eef0f3; color: var(--muted);
+  }
+  .reels-chip.running { background: #eff6ff; color: var(--accent); }
+  .reels-chip.error { background: #fef2f2; color: var(--danger); cursor: help; }
+  .reels-views { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .reels-redo {
+    margin-left: 6px; padding: 1px 6px; font-size: 10px; border-radius: 5px;
+    background: transparent; border: 1px solid var(--border); color: var(--muted); cursor: pointer;
+  }
+
+  /* ── 릴스 조회수 시각화 ─────────────────────
+     단일 계열이라 색은 accent 한 가지만 쓴다(범례 불필요). 고정 릴스는
+     '계열'이 아니라 맥락이라 회색으로 뒤로 물린다. */
+
+  /* 행을 펼쳤을 때 나오는 상세 패널.
+     채점 표(.bd-detail)와 같은 골격 — 왼쪽에 차트, 오른쪽에 요약 카드. */
+  /* 펼침 안에는 릴스 패널과 채점 표가 차례로 들어간다. 제목을 달고 가로줄로
+     끊어 주지 않으면 위 섹션의 라벨과 아래 카드가 붙어 보인다. */
+  .detail-sec + .detail-sec { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .rl-title { font-size: 12px; font-weight: 700; margin: 0 0 16px; }
+  .rl-title .sub { font-weight: 400; color: var(--muted); margin-left: 8px; }
+  /* stretch + 차트 flex:1 → 왼쪽 차트가 오른쪽 카드 높이에 맞춰 늘어난다.
+     막대 높이는 %라서 늘어난 만큼 같이 커진다(아래 .rl-chart 참고). */
+  .rl-detail { display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch; }
+  .rl-left { flex: 1 1 420px; min-width: 340px; display: flex; flex-direction: column; }
+  .rl-right {
+    flex: 0 1 340px; min-width: 280px;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+  }
+
+  /* 오른쪽 요약 — 채점의 점수 패널과 같은 리듬 */
+  .rl-scorebox { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .rl-scorebox b { font-size: 28px; line-height: 1; font-weight: 700; }
+  .rl-scorebox .unit { color: var(--muted); font-size: 13px; margin-left: -4px; }
+  .rl-scorebox .k { flex-basis: 100%; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .rl-lvchip { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .rl-lvchip.good { background: #ecfdf5; color: var(--ok); }
+  .rl-lvchip.mid  { background: #eff6ff; color: var(--accent); }
+  .rl-lvchip.lowv { background: #f3f4f6; color: var(--muted); }
+  /* 팔로워 대비 미터 — 1배/2배 눈금이 있어야 '높다'가 무슨 뜻인지 읽힌다. */
+  .rl-meter { margin-top: 12px; }
+  .rl-meter-track { position: relative; height: 12px; background: #eef0f3; border-radius: 999px; overflow: hidden; }
+  .rl-meter-fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
+  .rl-meter-fill.good { background: var(--ok); }
+  .rl-meter-fill.mid  { background: var(--accent); }
+  .rl-meter-fill.lowv { background: #cbd0d8; }
+  .rl-tick { position: absolute; top: 0; width: 2px; height: 12px; background: #fff; opacity: .8; }
+  .rl-meter-scale { position: relative; height: 14px; margin-top: 2px; }
+  .rl-meter-scale span { position: absolute; transform: translateX(-50%); font-size: 10px; color: var(--muted); }
+  .rl-stats { display: flex; gap: 18px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .rl-kpi .k { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .rl-kpi .v { font-size: 15px; font-weight: 600; line-height: 1.1; }
+  .rl-kpi .v small { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+  /* 고정 릴스는 통계에서 빠졌다는 걸 칩 모양으로도 구분해 둔다. */
+  .rl-pinchips { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; }
+  .rl-pinchips b { display: block; font-size: 11px; color: var(--muted); font-weight: 700; margin-bottom: 6px; }
+  .rl-pinchip {
+    display: inline-block; padding: 3px 10px; margin: 0 4px 4px 0; border-radius: 7px;
+    background: #f3f4f6; color: #55606e; font-weight: 700; font-size: 11px;
+  }
+
+  /* padding-top은 최댓값 라벨이 위 제목에 붙지 않게 띄우는 자리.
+     막대(height %)와 중앙값 선(bottom %)의 기준 상자를 같게 하려고 플롯을 따로 감쌌다 —
+     %는 막대가 콘텐츠 상자, bottom이 패딩 상자를 기준으로 잡아 padding만큼 어긋난다. */
+  .rl-chart {
+    display: flex; flex-direction: column;
+    flex: 1 1 auto; min-height: 180px; padding-top: 30px;
+  }
+  .rl-plot {
+    position: relative; display: flex; align-items: flex-end; gap: 2px; flex: 1 1 auto;
+  }
+  .rl-plot .bar {
+    position: relative; flex: 1 1 0; max-width: 24px; min-height: 2px;
+    background: var(--accent); border-radius: 4px 4px 0 0;
+  }
+  .rl-plot .bar:hover { background: var(--accent-hover); }
+  .rl-plot .bar .lab {
+    position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    margin-bottom: 4px; font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap;
+  }
+  /* 중앙값 기준선 — 이 계정의 '평소 성적'이 한눈에 보이게 */
+  .rl-median { position: absolute; left: 0; right: 0; border-top: 1px solid #c3c8d0; }
+  .rl-median span {
+    position: absolute; right: 0; top: -13px; font-size: 10px; color: var(--muted);
+    background: #fff; padding: 0 3px;
+  }
+  .rl-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 6px; }
+  .rl-foot { font-size: 11px; color: var(--muted); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+  /* 차트의 표 버전 — 접어 두되 항상 닿을 수 있게 */
+  .rl-details { margin-top: 12px; }
+  .rl-details summary { font-size: 11px; color: var(--muted); cursor: pointer; }
+  .rl-details summary:hover { color: var(--accent); }
+  .rl-table { border-collapse: collapse; font-size: 12px; margin-top: 8px; min-width: 260px; }
+  /* 바깥 표의 th 규칙(sticky·대문자·포인터)이 옮겨붙지 않게 되돌린다. */
+  .rl-table th, .rl-table td {
+    padding: 4px 12px 4px 0; border-bottom: 1px solid var(--border); text-align: left;
+    position: static; cursor: default; text-transform: none; letter-spacing: 0; z-index: auto;
+  }
+  .rl-table th { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .rl-table .n { text-align: right; font-variant-numeric: tabular-nums; }
+  .rl-table tr.pin td { color: var(--muted); }
+
+  /* 대기열 안내 — Claude Code가 큐를 가져가야 진행되므로 할 일을 적어 둔다. */
+  .reels-queue {
+    display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 9px 12px; margin-bottom: 12px; border-radius: 7px; font-size: 12px;
+    background: #eff6ff; border: 1px solid #bfdbfe; color: var(--accent);
+  }
+  .reels-queue.show { display: flex; }
+  .reels-queue code {
+    background: #fff; border: 1px solid #bfdbfe; border-radius: 5px;
+    padding: 1px 6px; font-size: 11px; color: var(--text);
+  }
+  .reels-queue .names { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -405,16 +543,25 @@
         <div class="progress-track"><div class="progress-bar active" id="judgeBar"></div></div>
         <div class="progress-label" id="judgeProgressLabel">판정 준비 중…</div>
       </div>
+      <div class="reels-queue" id="reelsQueue">
+        <b id="reelsQueueCount"></b>
+        <span class="names" id="reelsQueueNames"></span>
+        <span>— Claude Code에서 <code>/reels-views</code> 를 실행하면 크롬으로 추출합니다.</span>
+        <span class="spacer"></span>
+        <button class="btn-ghost" id="reelsClearBtn" type="button">대기열 비우기</button>
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
+              <th class="caret-col"></th>
               <th data-key="screen">선별</th>
               <th data-key="score" class="num">점수</th>
               <th data-key="grade">등급</th>
               <th data-key="username">계정</th>
               <th data-key="full_name">이름</th>
               <th data-key="followers" class="num">팔로워</th>
+              <th data-key="views_median">릴스 조회수</th>
               <th data-key="hangul_ratio" class="num">한글</th>
               <th data-key="email">이메일</th>
               <th data-key="biography">소개글</th>
@@ -521,7 +668,7 @@ function renderTable() {
         `${r.username} ${r.full_name} ${r.biography} ${r.email}`.toLowerCase().includes(q))
     : rows;
 
-  const numericKeys = new Set(["followers", "posts", "hangul_ratio", "score"]);
+  const numericKeys = new Set(["followers", "posts", "hangul_ratio", "score", "views_median"]);
   // 미판정(빈 문자열)은 정렬 방향과 무관하게 항상 아래로 — 위쪽은 검토할 것만 보이게.
   const sorted = [...filtered].sort((a, b) => {
     const [x, y] = [a[sortKey] ?? "", b[sortKey] ?? ""];
@@ -538,7 +685,8 @@ function renderTable() {
   const now = Date.now();
   for (const r of sorted) {
     const tr = document.createElement("tr");
-    const canExpand = !!(r.breakdown && r.breakdown.rows);
+    // 채점 표가 있거나 릴스 조회수가 있으면 펼칠 거리가 있다.
+    const canExpand = !!((r.breakdown && r.breakdown.rows) || (r.reels && r.reels.reels_count));
     const isOpen = canExpand && expanded.has(r.username);
     const cls = [];
     if (flashUntil.get(r.username) > now) cls.push("just-judged");  // 방금 판정 강조
@@ -549,12 +697,14 @@ function renderTable() {
     // 채점된 계정만 펼침 캐럿을 준다(클릭 시 계정별 채점 표).
     const caret = canExpand ? `<span class="caret">▸</span>` : `<span class="caret"></span>`;
     tr.innerHTML = `
-      <td>${caret}${screenBadge(r)}</td>
+      <td class="caret-col">${caret}</td>
+      <td>${screenBadge(r)}</td>
       <td class="num">${r.score === "" || r.score == null ? "-" : num(r.score)}</td>
-      <td>${gradeBadge(r.grade, r.gate)}</td>
+      <td class="grade-col">${gradeBadge(r.grade, r.gate)}</td>
       <td><a href="${escapeAttr(r.profile_url)}" target="_blank" rel="noopener">@${escapeHtml(r.username)}</a></td>
       <td>${escapeHtml(r.full_name)}</td>
       <td class="num">${num(r.followers).toLocaleString()}</td>
+      <td class="reels-col">${reelsCell(r)}</td>
       <td class="num">${Math.round(num(r.hangul_ratio) * 100)}%</td>
       <td>${r.email ? `<a href="mailto:${escapeAttr(r.email)}">${escapeHtml(r.email)}</a>` : "-"}</td>
       <td class="bio">${escapeHtml(r.biography || "")}</td>
@@ -563,7 +713,14 @@ function renderTable() {
     if (isOpen) {
       const dr = document.createElement("tr");
       dr.className = "detail-row";
-      dr.innerHTML = `<td colspan="10">${renderBreakdown(r)}</td>`;
+      // 릴스 패널이 위, 채점 표가 아래. 둘 중 하나만 있는 계정도 있다.
+      // 각각 <section>으로 감싸야 CSS가 둘 사이를 가로줄로 끊어 준다.
+      const sec = (html) => (html ? `<section class="detail-sec">${html}</section>` : "");
+      const detail = sec(reelsPanel(r))
+        + sec(r.breakdown && r.breakdown.rows
+          ? `<h4 class="rl-title">계정별 채점<span class="sub">신호별 배점과 근거</span></h4>${renderBreakdown(r)}`
+          : "");
+      dr.innerHTML = `<td colspan="12">${detail}</td>`;
       tbody.appendChild(dr);
     }
   }
@@ -585,6 +742,213 @@ function screenReasonCell(r) {
   if (!r.screen) return `<span class="no-reason">—</span>`;
   return `<span class="reason">${escapeHtml(r.screen_reason || "")}</span>`;
 }
+// ── 릴스 조회수 ────────────────────────────────
+// 추출은 서버가 아니라 Claude Code(Claude for Chrome)가 한다. 버튼은 요청을
+// 큐에 넣을 뿐이고, 이 화면은 큐 상태와 저장된 결과를 폴링해서 보여준다.
+let reelsQueueState = new Map();  // username -> {state, error}
+let reelsTimer = null;
+
+function reelsCell(r) {
+  const q = reelsQueueState.get(r.username);
+  if (q && q.state === "queued") return `<span class="reels-chip">대기 중</span>`;
+  if (q && q.state === "running") return `<span class="reels-chip running">추출 중…</span>`;
+  if (q && q.state === "error") {
+    return `<span class="reels-chip error" title="${escapeAttr(q.error)}">실패</span>
+      <button class="reels-redo" data-reels="${escapeAttr(r.username)}" type="button">다시</button>`;
+  }
+  const reel = r.reels;
+  if (!reel || reel.reels_count === "" || reel.reels_count === 0) {
+    // 릴스가 0개로 저장된 경우도 있다(비공개/릴스 없음) — note를 툴팁으로 보여준다.
+    const note = reel && reel.note
+      ? `<span class="reels-chip" title="${escapeAttr(reel.note)}">없음</span>
+         <button class="reels-redo" data-reels="${escapeAttr(r.username)}" type="button">다시</button>`
+      : `<button class="reels-btn" data-reels="${escapeAttr(r.username)}" type="button">조회수 추출</button>`;
+    return note;
+  }
+  // 셀은 대표값(중앙값) 하나만. 추이·평균·고정 릴스는 행을 펼치면 나온다.
+  return `<span class="reels-views" title="${escapeAttr(reelsTooltip(reel))}">${num(reel.views_median).toLocaleString()}</span>
+    <button class="reels-redo" data-reels="${escapeAttr(r.username)}" type="button">갱신</button>`;
+}
+// 팔로워 대비 조회수 배율 — 팔로워 수가 다른 계정끼리 비교할 수 있는 유일한 축.
+function viewRatio(r) {
+  const followers = num(r.followers);
+  const median = r.reels ? num(r.reels.views_median) : 0;
+  if (!followers || !median) return null;
+  return median / followers;
+}
+function fmtRatio(x) {
+  return (x >= 10 ? Math.round(x) : x.toFixed(x < 1 ? 2 : 1)) + "배";
+}
+// 만/억 단위로 줄여 쓴다 — 인스타 화면 표기와 같은 단위라 대조하기 쉽다.
+function fmtCompact(v) {
+  const n = num(v);
+  if (n >= 100000000) return trimZero(n / 100000000) + "억";
+  if (n >= 10000) return trimZero(n / 10000) + "만";
+  return n.toLocaleString();
+}
+function trimZero(x) {
+  return x.toFixed(1).replace(/\.0$/, "");
+}
+
+// 행을 펼쳤을 때 나오는 릴스 상세 패널.
+// 단일 계열이라 범례는 두지 않고, 라벨은 최댓값 하나에만 붙인다.
+function reelsPanel(r) {
+  const reel = r.reels;
+  if (!reel || !reel.reels_count) return "";
+  const views = [...(reel.views || [])].reverse();  // 과거 → 최신
+  const pinned = reel.views_pinned || [];
+  const max = Math.max(...views.map(num), 1);
+  const median = num(reel.views_median);
+  // 릴스가 하나뿐이면 막대 하나짜리 차트가 된다 — 그건 차트가 아니라 그냥 숫자다.
+  const single = views.length < 2;
+  const maxIdx = views.findIndex((v) => num(v) === max);
+  // 높이를 %로 두면 차트 상자가 오른쪽 카드 높이에 맞춰 늘어날 때 같이 커진다.
+  const pct = (v) => ((num(v) / max) * 100).toFixed(1);
+  const bars = views.map((v, i) => {
+    // 라벨은 최댓값 하나만 — 막대마다 숫자를 붙이면 읽히지 않는다. 나머지는 표로 본다.
+    const lab = i === maxIdx ? `<span class="lab">${fmtCompact(v)}</span>` : "";
+    return `<span class="bar" style="height:${pct(v)}%" title="${num(v).toLocaleString()}회">${lab}</span>`;
+  }).join("");
+  // 중앙값 선이 이 계정의 '평소 성적'. 튄 편과 평소가 이 선으로 갈린다.
+  const medianLine = median
+    ? `<span class="rl-median" style="bottom:${pct(median)}%"><span>중앙값 ${fmtCompact(median)}</span></span>`
+    : "";
+
+  const left = single ? "" : `
+    <div class="rl-left">
+      <div class="rl-chart"><div class="rl-plot">${medianLine}${bars}</div></div>
+      <div class="rl-axis"><span>오래됨</span><span>최신</span></div>
+      ${reelsTable(views, pinned)}
+    </div>`;
+
+  // 오른쪽 요약 카드 — 채점 패널과 같은 구성(큰 숫자 → 미터 → 보조 수치).
+  const ratio = viewRatio(r);
+  const lv = ratio === null ? "" : ratio >= 2 ? "good" : ratio >= 1 ? "mid" : "lowv";
+  const lvLabel = { good: "우수", mid: "양호", lowv: "낮음" }[lv] || "";
+  const meter = ratio === null ? "" : `
+    <div class="rl-meter">
+      <div class="rl-meter-track">
+        <div class="rl-meter-fill ${lv}" style="width:${Math.min(ratio / 3, 1) * 100}%"></div>
+        <span class="rl-tick" style="left:33.3%"></span>
+        <span class="rl-tick" style="left:66.6%"></span>
+      </div>
+      <div class="rl-meter-scale">
+        <span style="left:33.3%">1배</span><span style="left:66.6%">2배</span><span style="left:100%">3배+</span>
+      </div>
+    </div>`;
+  const kpi = (k, v, unit = "") =>
+    `<div class="rl-kpi"><span class="k">${k}</span><span class="v">${v}${unit ? `<small>${unit}</small>` : ""}</span></div>`;
+  const stats = single ? "" : `
+    <div class="rl-stats">
+      ${kpi("평균", fmtCompact(reel.views_mean), "회")}
+      ${kpi("최대", fmtCompact(reel.views_max), "회")}
+      ${kpi("최소", fmtCompact(reel.views_min), "회")}
+    </div>`;
+  const pinChips = pinned.length ? `
+    <div class="rl-pinchips">
+      <b>고정 릴스 ${pinned.length}개 · 통계 제외</b>
+      ${pinned.map((v) => `<span class="rl-pinchip">${fmtCompact(v)}</span>`).join("")}
+    </div>` : "";
+  const right = `
+    <div class="rl-right">
+      <div class="rl-scorebox">
+        <span class="k">${single ? "조회수" : "릴스 조회수 중앙값"}</span>
+        <b>${fmtCompact(median)}</b><span class="unit">회</span>
+        ${ratio === null ? "" : `<span class="rl-lvchip ${lv}">팔로워 대비 ${fmtRatio(ratio)} · ${lvLabel}</span>`}
+      </div>
+      ${meter}
+      ${stats}
+      ${pinChips}
+      <div class="rl-foot">
+        표본 ${reel.reels_count}개 · 수집 ${escapeHtml((reel.collected_at || "-").replace("T", " ").slice(0, 16))}
+        ${reel.note ? " · " + escapeHtml(reel.note) : ""}<br>
+        조회수는 인스타 화면 표기(1.2만 등)를 옮긴 값이라 만 단위는 근사치입니다.
+      </div>
+      ${single ? reelsTable(views, pinned) : ""}
+    </div>`;
+
+  const subtitle = single
+    ? "릴스 1개 — 추이를 볼 표본이 아닙니다"
+    : `최근 ${views.length}개 · 오래된 것부터 최신 순`;
+  return `
+    <h4 class="rl-title">릴스 조회수<span class="sub">${subtitle}</span></h4>
+    <div class="rl-detail">${left}${right}</div>`;
+}
+// 차트의 표 버전. 툴팁이 값을 읽는 유일한 수단이 되지 않도록 항상 함께 둔다.
+function reelsTable(views, pinned) {
+  const rows = views.map((v, i) =>
+    `<tr><td>${i + 1}</td><td class="n">${num(v).toLocaleString()}</td><td>일반</td></tr>`).join("")
+    + (pinned || []).map((v) =>
+      `<tr class="pin"><td>—</td><td class="n">${num(v).toLocaleString()}</td><td>고정 · 통계 제외</td></tr>`).join("");
+  return `
+    <details class="rl-details">
+      <summary>표로 보기</summary>
+      <table class="rl-table">
+        <thead><tr><th>#</th><th class="n">조회수</th><th>구분</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </details>`;
+}
+// 대표값은 중앙값이다 — 평균은 대박 영상 하나에 끌려가 계정 체력을 과대평가한다.
+function reelsTooltip(reel) {
+  const views = (reel.views || []).map((v) => num(v).toLocaleString()).join(", ");
+  const pinned = (reel.views_pinned || []).map((v) => num(v).toLocaleString()).join(", ");
+  return [
+    `중앙값 ${num(reel.views_median).toLocaleString()} · 평균 ${num(reel.views_mean).toLocaleString()}`,
+    `최대 ${num(reel.views_max).toLocaleString()} · 최소 ${num(reel.views_min).toLocaleString()}`,
+    views && `최근순: ${views}`,
+    // 고정 릴스는 통계에서 빠져 있다는 걸 툴팁에서 분명히 해 둔다.
+    pinned && `고정(통계 제외): ${pinned}`,
+    reel.collected_at && `수집: ${reel.collected_at}`,
+    reel.note,
+  ].filter(Boolean).join("\n");
+}
+
+function applyReelsQueue(queue) {
+  reelsQueueState = new Map((queue || []).map((q) => [q.username, q]));
+  const waiting = (queue || []).filter((q) => q.state !== "error");
+  const box = $("reelsQueue");
+  box.classList.toggle("show", waiting.length > 0);
+  if (waiting.length) {
+    $("reelsQueueCount").textContent = `릴스 조회수 추출 대기 ${waiting.length}건`;
+    const names = waiting.slice(0, 6).map((q) => "@" + q.username).join(", ");
+    $("reelsQueueNames").textContent = names + (waiting.length > 6 ? " 외" : "");
+  }
+  // 대기 중인 요청이 있는 동안에만 폴링한다(Claude Code가 처리하면 사라진다).
+  if (waiting.length && !reelsTimer) reelsTimer = setInterval(refreshReels, 3000);
+  if (!waiting.length && reelsTimer) { clearInterval(reelsTimer); reelsTimer = null; }
+}
+
+async function refreshReels() {
+  const data = await (await fetch("/api/reels")).json();
+  for (const r of rows) {
+    const reel = data.rows[r.username];
+    r.reels = reel || null;
+    r.views_median = reel ? reel.views_median : "";
+    r.reels_count = reel ? reel.reels_count : "";
+  }
+  applyReelsQueue(data.queue);
+  renderTable();
+}
+
+async function requestReels(username) {
+  clearBanner();
+  const res = await fetch("/api/reels/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ usernames: [username] }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    banner(err.detail || "요청을 등록하지 못했습니다.");
+    return;
+  }
+  const data = await res.json();
+  applyReelsQueue(data.queue);
+  renderTable();
+  banner(`@${username} 릴스 조회수 추출을 대기열에 넣었습니다. Claude Code에서 /reels-views 를 실행하세요.`, "info");
+}
+
 // 계정별 채점 표(펼침). 각 축이 만점 대비 몇 점인지 한 행씩 + 채점 이유·근거.
 function renderBreakdown(r) {
   const bd = r.breakdown;
@@ -668,6 +1032,7 @@ async function loadCandidates() {
   const res = await fetch("/api/candidates");
   const data = await res.json();
   rows = data.rows;
+  applyReelsQueue(data.reels_queue);
   renderTable();
 }
 
@@ -808,10 +1173,20 @@ $("useHashtag").addEventListener("change", (e) => {
 $("judgeModel").addEventListener("change", onModelChange);
 $("search").addEventListener("input", renderTable);
 $("refreshBtn").addEventListener("click", loadCandidates);
+$("reelsClearBtn").addEventListener("click", async () => {
+  const data = await (await fetch("/api/reels/queue", { method: "DELETE" })).json();
+  applyReelsQueue(data.queue);
+  renderTable();
+});
 
-// 채점된 행을 클릭하면 계정별 채점 표를 펼치거나 접는다(링크 클릭은 제외).
+// 채점된 행을 클릭하면 계정별 채점 표를 펼치거나 접는다(링크·릴스 버튼은 제외).
 $("tbody").addEventListener("click", (e) => {
   if (e.target.closest("a")) return;
+  const reelsBtn = e.target.closest("[data-reels]");
+  if (reelsBtn) {
+    requestReels(reelsBtn.dataset.reels);
+    return;  // 행 펼침으로 이어지지 않게
+  }
   const tr = e.target.closest("tr.main-row");
   if (!tr) return;
   const user = tr.dataset.user;
