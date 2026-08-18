@@ -33,7 +33,10 @@ curl -s -X POST http://127.0.0.1:8000/api/reels/claim \
 
 ### 3. 크롬 툴 로드 (한 번만, 한 호출로)
 
-ToolSearch: `select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__navigate,mcp__claude-in-chrome__get_page_text,mcp__claude-in-chrome__read_page,mcp__claude-in-chrome__computer`
+ToolSearch: `select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__navigate,mcp__claude-in-chrome__get_page_text,mcp__claude-in-chrome__read_page,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__find`
+
+(`find`는 고정 릴스 확인에 반드시 필요하다 — 빠뜨리면 4단계에서 다시 로드하느라
+왕복이 한 번 더 든다.)
 
 `tabs_context_mcp`로 현재 탭 상황을 먼저 확인하고, 작업용 탭을 **하나만**
 새로 만들어 계정마다 `navigate`로 재사용한다(계정마다 탭을 새로 열지 않는다).
@@ -63,7 +66,9 @@ ToolSearch: `select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrom
 
 계정 전체 릴스가 12개보다 적으면 있는 만큼만 넣고, `note`에 그 사실을 적는다
 (예: `"계정 전체 릴스가 1개 — 12개 기준 미달"`). 표본이 적다는 건 화면에서
-보여야 할 정보다.
+보여야 할 정보다. **릴스가 3개 미만이면 스코어링의 도달 축이 아예 빠진다**
+(judge.py `MIN_REELS_SAMPLE`) — 1~2개의 중앙값은 평소 성과가 아니라 그날의
+운에 가까워서다. 그 계정 점수는 조회수 없는 계정과 같은 방식으로 매겨진다.
 
 **고정(📌) 릴스를 반드시 구분한다.** 맨 앞 타일들에 압정 아이콘이 붙은 것이
 고정 릴스다. 계정이 골라 박아둔 대표작이라 평소 성과가 아니고, 보통 평소의
@@ -75,6 +80,15 @@ ToolSearch: `select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrom
 `get_page_text`에는 안 나오고, **스크린샷도 믿을 수 없다** — 압정이 흰색이라
 밝은 배경/자막에 묻혀 안 보이는 경우가 실제로 있었다. 고정은 최대 3개이고 항상
 맨 앞에 연속으로 온다.
+
+**`find`는 반드시 스크롤 뒤에 부른다.** 계정마다 `navigate` → `scroll` → `find`
+→ `get_page_text` 순서를 지킨다. 이동 직후에는 그리드가 아직 렌더링되지 않아
+접근성 트리가 비어 있고, `find`가 "압정 아이콘이 없다"고 **틀린 답을 확신 있게**
+돌려준다. 실제로 그렇게 답한 계정의 스크린샷에는 압정이 3개 뚜렷이 보였다.
+그대로 믿었으면 고정 3개(7.3만·7.3만·15만)가 일반 표본에 섞여 중앙값이 부풀려졌을
+것이다. `find`가 "없음"이라고 했는데 스크린샷에 압정이 보이면 **스크린샷이 맞다**
+(위의 '스크린샷도 믿을 수 없다'는 압정이 **보일 때** 세는 걸 믿지 말라는 뜻이지,
+보이는 압정을 무시하라는 뜻이 아니다). 다시 스크롤하고 `find`를 한 번 더 부른다.
 
 읽어낸 값이 조회수인지 헷갈리면(좋아요·댓글 수와 섞임) `read_page`로 구조를
 확인한다. 릴스 그리드 타일의 오버레이 숫자가 조회수다.
@@ -109,6 +123,10 @@ curl -s -X POST http://127.0.0.1:8000/api/reels/fail \
 처리한 계정 수와 각 계정의 중앙값을 한 줄씩 요약해 보고한다.
 결과는 `instacrawl/reels.csv`에 저장되고 대시보드 표에 자동으로 뜬다
 (대시보드는 3초마다 폴링하므로 새로고침 불필요).
+
+조회수는 스코어링의 **도달 축** 재료이기도 하다. 서버가 결과를 저장하면서
+그 계정을 자동으로 재채점하므로(LLM 호출 없음), 점수·등급이 같이 바뀔 수 있다.
+요약에 등급이 달라진 계정이 있으면 그 사실도 한 줄 덧붙인다.
 
 ## 하지 말 것
 

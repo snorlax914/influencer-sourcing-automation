@@ -12,4 +12,5 @@ dependencies = [
     "uvicorn>=0.32",
     "anthropic>=0.69",
     "openai>=1.54",
+    "openpyxl>=3.1",
 ]

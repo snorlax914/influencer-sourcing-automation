@@ -18,11 +18,12 @@ import os
 import threading
 from collections import deque
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -33,13 +34,18 @@ from discover import (
     parse_seeds,
     read_candidates,
     run_discovery,
+    run_refresh,
+    stale_candidates,
 )
+import dm
+from export import build_workbook
 from judge import (
     DEFAULT_PRESET,
     MODEL_PRESETS,
     JudgeConfig,
     list_local_models,
     load_verdicts,
+    rescore_all,
     run_judging,
     score_breakdown,
 )
@@ -191,6 +197,28 @@ class RunRequest(BaseModel):
         )
 
 
+class RefreshRequest(BaseModel):
+    """표에서 고른 계정의 정보를 다시 받아오는 갱신 설정.
+
+    발굴 폼과 달리 seeds·해시태그가 없다 — 갱신은 새 계정을 찾지 않고
+    이미 CSV에 있는 계정만 다시 읽는다. 대상은 사용자가 직접 고른다.
+    """
+
+    usernames: list[str] = Field(default_factory=list)
+    captions_per_account: int = Field(3, ge=0, le=12)
+    delay: float = Field(6.0, ge=1, le=60)
+
+    def to_config(self) -> DiscoverConfig:
+        names = [u.strip().lstrip("@") for u in self.usernames if u.strip()]
+        if not names:
+            raise HTTPException(400, "갱신할 계정을 선택하세요.")
+        return DiscoverConfig(
+            refresh_usernames=names,
+            captions_per_account=self.captions_per_account,
+            delay=self.delay,
+        )
+
+
 class SeedsRequest(BaseModel):
     seeds: str
 
@@ -243,6 +271,24 @@ class ReelsFailBody(BaseModel):
     error: str = "추출에 실패했습니다."
 
 
+class DmCommonBody(BaseModel):
+    """공통 슬롯(가게 이름·담당자·제안 조건 등)."""
+
+    values: dict[str, str] = Field(default_factory=dict)
+
+
+class DmSentBody(BaseModel):
+    """'이 계정에 보냈다' 기록.
+
+    본문은 서버가 템플릿과 슬롯으로 다시 조립해 저장한다 — 화면이 보낸
+    문자열을 그대로 믿으면 기록이 실제 템플릿과 어긋날 수 있다.
+    """
+
+    username: str
+    template: str = dm.DEFAULT_TEMPLATE
+    values: dict[str, str] = Field(default_factory=dict)
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
     return HTMLResponse((STATIC_DIR / "index.html").read_text(encoding="utf-8"))
@@ -278,6 +324,8 @@ def status() -> dict:
         "stats": job.stats if job else {},
         "saved_count": len(read_candidates()),
         "judged_count": len(load_verdicts()),
+        # 화면의 '갱신' 버튼이 몇 개가 오래됐는지 바로 보여줄 수 있도록.
+        "stale_count": len(stale_candidates()),
     }
 
 
@@ -300,6 +348,26 @@ def _start_job(runner, config, kind: str) -> dict:
 def run(req: RunRequest) -> dict:
     config = req.to_config()  # 검증 먼저 (락 잡기 전에 400을 내도록)
     return _start_job(run_discovery, config, "discover")
+
+
+@app.post("/api/refresh")
+def refresh(req: RefreshRequest) -> dict:
+    """오래된 계정부터 일부만 다시 크롤한다. 발굴과 같은 잡 슬롯을 쓴다."""
+    return _start_job(run_refresh, req.to_config(), "refresh")
+
+
+@app.post("/api/rescore")
+def rescore() -> dict:
+    """저장된 판정의 점수를 다시 매긴다(LLM 호출 없음).
+
+    잡으로 돌리지 않고 요청 안에서 끝낸다 — 네트워크를 타지 않고 CSV만
+    읽고 쓰므로 수백 건이라도 1초 안에 끝난다. 로그 스트림에 붙일 이유가 없다.
+    """
+    lines: list[str] = []
+    stats = rescore_all(log=lines.append)
+    if not stats.get("ok"):
+        raise HTTPException(409, lines[-1] if lines else "재채점에 실패했습니다.")
+    return {**stats, "log": lines}
 
 
 @app.get("/api/judge/models")
@@ -416,7 +484,16 @@ def reels_result(req: ReelsResultBody) -> dict:
         raise HTTPException(400, "읽어낸 조회수가 없습니다. note에 이유를 적어 주세요.")
     row = save_reel(username, views, req.note, pinned)
     reels_queue.mark_done(username)
-    return {"saved": row, "dropped": dropped, "queue": reels_queue.snapshot()}
+    # 조회수는 스코어링의 도달 축 재료다. 저장만 하고 점수를 그대로 두면 화면에
+    # 조회수는 떴는데 등급은 옛날 값인 상태가 남는다. 재채점은 LLM을 쓰지 않고
+    # CSV만 읽고 쓰므로(수백 건에 1초 미만) 요청 안에서 바로 돌린다.
+    rescored = rescore_all(log=lambda _line: None)
+    return {
+        "saved": row,
+        "dropped": dropped,
+        "rescored": rescored.get("changed", 0),
+        "queue": reels_queue.snapshot(),
+    }
 
 
 @app.post("/api/reels/fail")
@@ -480,10 +557,12 @@ def candidates() -> dict:
     """
     verdict_by_user = load_verdicts()
     reels_by_user = load_reels()
+    dm_by_user = dm.load_records()
     rows = []
     for row in read_candidates():
         verdict = verdict_by_user.get(row["username"], {})
         reel = reels_by_user.get(row["username"], {})
+        sent = dm_by_user.get(row["username"], {})
         # 채점된(선별 합격) 계정만 계정별 채점 표를 곁들인다. 신호로 다시 계산하므로
         # CSV에 표를 저장할 필요가 없다.
         breakdown = score_breakdown(verdict) if verdict.get("tier") else None
@@ -506,6 +585,10 @@ def candidates() -> dict:
                 "reels_count": reel.get("reels_count", ""),
                 "reels": reel or None,
                 "reels_url": reels_url(row["username"]),
+                # 첫 DM은 사람이 보내므로, 누구에게 이미 보냈는지 화면이 알아야
+                # 같은 계정에 두 번 보내지 않는다.
+                "dm_sent_at": sent.get("sent_at", ""),
+                "dm_template": sent.get("template", ""),
             }
         )
     return {
@@ -516,12 +599,66 @@ def candidates() -> dict:
     }
 
 
+# ── 협업 제안 DM ───────────────────────────────────────
+# 서버는 초안을 만들고 발송 여부만 기록한다. 실제 발송은 사람이 인스타에서 한다
+# (첫 DM 자동 발송은 밴 위험 — dm-reply-automation.md 참고).
+
+
+@app.get("/api/dm/config")
+def dm_config() -> dict:
+    """템플릿 본문·슬롯 정의·저장된 공통 값·발송 기록."""
+    return {**dm.config_payload(), "records": list(dm.load_records().values())}
+
+
+@app.put("/api/dm/common")
+def dm_save_common(req: DmCommonBody) -> dict:
+    """공통 슬롯 값을 저장해 다음에도 그대로 쓰이게 한다."""
+    return {"common": dm.save_common(req.values)}
+
+
+@app.post("/api/dm/sent")
+def dm_mark_sent(req: DmSentBody) -> dict:
+    username = req.username.strip().lstrip("@")
+    if not username:
+        raise HTTPException(400, "계정명이 비어 있습니다.")
+    try:
+        body = dm.render(req.template, req.values)
+    except KeyError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"saved": dm.mark_sent(username, req.template, body)}
+
+
+@app.delete("/api/dm/sent/{username}")
+def dm_unmark_sent(username: str) -> dict:
+    """잘못 눌렀을 때 되돌린다."""
+    if not dm.unmark_sent(username.strip().lstrip("@")):
+        raise HTTPException(404, "발송 기록이 없는 계정입니다.")
+    return {"removed": username}
+
+
 @app.get("/api/candidates.csv")
 def download_csv() -> FileResponse:
+    """크롤 원본만 그대로 내려준다(점수·조회수 없음). 병합본은 /api/export.xlsx."""
     path: Path = DiscoverConfig().output_path
     if not path.exists():
         raise HTTPException(404, "아직 저장된 후보가 없습니다.")
     return FileResponse(path, media_type="text/csv", filename="candidates.csv")
+
+
+@app.get("/api/export.xlsx")
+def download_xlsx() -> Response:
+    """후보+판정+릴스를 합친 스프레드시트. 구글 시트에 그대로 올릴 수 있다."""
+    if not read_candidates():
+        raise HTTPException(404, "아직 저장된 후보가 없습니다.")
+    today = datetime.now().strftime("%Y%m%d")
+    # 파일명은 ASCII로 둔다. 한글 파일명은 브라우저·OS마다 인코딩이 달라
+    # Content-Disposition에서 깨지는 경우가 있다.
+    filename = f"influencers_{today}.xlsx"
+    return Response(
+        content=build_workbook(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 if __name__ == "__main__":

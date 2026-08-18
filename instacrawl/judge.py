@@ -13,7 +13,8 @@
 - 최종 점수·등급은 LLM이 아니라 코드가 계산한다(티어별 배점표). 배점을 바꿔도
   LLM을 다시 호출할 필요가 없고, 왜 그 점수인지 추적할 수 있다.
 - 점수는 회의록 스코어링 기준을 따른다: 팔로워 규모(티어)별로 배점을 달리하고,
-  지역(부산 우선)·외국인·음식 세 축을 채점한 뒤 지역 게이트로 거른다.
+  도달(릴스 조회수)·지역(부산 우선)·외국인·음식 네 축을 채점한 뒤 지역 게이트로 거른다.
+  **도달이 점수의 40~50%로 가장 무겁다** — 자세한 배분과 이유는 아래 스코어링 절 참고.
 """
 
 import csv
@@ -27,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from discover import BASE_DIR, CAPTION_SEP, hangul_ratio, read_candidates
+from reels import load_reels
 from session import LogFn  # import 시 session이 .env를 읽어 아래 os.environ에 반영된다
 
 # 로컬 Ollama 서버 주소. instacrawl/.env의 OLLAMA_HOST로 덮어쓸 수 있고,
@@ -117,6 +119,8 @@ VERDICT_FIELDS = [
     "busan_ratio",
     "korea_ratio",
     "food_ratio",
+    "view_rate",
+    "views_abs",
     "fit",
     "score",
     "score_reason",
@@ -127,11 +131,26 @@ VERDICT_FIELDS = [
 # 팔로워 규모(티어)마다 배점이 다르다. 최종 점수는 LLM이 아니라 아래 표로
 # 코드가 계산하므로, 표만 바꾸면 재호출 없이 순위를 다시 매길 수 있다.
 #
-# 원본 기준의 ④도달×신뢰(ER=평균 좋아요/팔로워)와 지역의 '최근성'은
-# 크롤러가 좋아요 수·게시물 날짜를 수집하지 않아 계산할 수 없다. 그래서
-# 계산 가능한 세 축(지역·외국인·음식)만 채점하고, 최종 점수를 티어별
-# 만점으로 나눠 100점으로 환산한다(남은 배점 재분배). 등급 임계값(A 70+ 등)이
-# 그대로 의미를 갖게 하기 위함이다.
+# 축은 네 개다: 도달(릴스 조회수) / 지역(부산·한국) / 외국인(캡션·바이오) / 음식.
+# **도달이 가장 무겁다** — 티어별로 40·45·50점, 즉 점수의 40~50%다. 나머지 세 축을
+# 다 합쳐도 도달 하나를 겨우 넘는다. 지역·외국인·음식은 '이 계정이 우리와 맞는가'를
+# 보는 반면, 도달은 '실제로 몇 명에게 닿는가'를 본다. 맞는 계정을 찾아도 아무도
+# 안 보면 소용이 없으므로, 광고 효과와 가장 직접 연결되는 축에 배점을 몰았다.
+# (원본 회의록의 ④도달×신뢰는 ER=좋아요/팔로워였다. 좋아요는 여전히 미수집이고,
+#  릴스 조회수가 도달의 직접 측정치라 프록시인 좋아요보다 낫다.)
+#
+# 앞의 세 축은 크롤 텍스트만으로 항상 채점되지만, 도달 축은 릴스 조회수를
+# 추출한 계정에만 있다(reels.py — 사용자의 크롬으로 계정마다 따로 수집한다).
+# 그래서 만점이 두 가지다:
+#   - 조회수 있음 → 네 축 전부, 티어별 만점 100 (환산 없이 원점수가 곧 점수)
+#   - 조회수 없음 → 세 축만, 티어별 만점 60/55/50 → 100점으로 환산
+#
+# 조회수 없는 계정을 '도달 0점'으로 깎으면 아직 추출하지 않았다는 이유만으로
+# 순위에서 밀려난다. 그래서 축을 빼고 남은 축으로 환산한다(= 도달을 '평균'으로
+# 가정). 다만 도달이 점수의 절반인 지금, 미측정 계정의 점수는 절반이 가정값이다.
+# 그래서 등급을 UNMEASURED_GRADE_CAP(B)까지만 준다 — 순위에는 남기되 '즉시 컨택'
+# 판정은 실제로 재본 계정에만 붙인다. 추출해서 도달이 나쁘면 점수는 실제로
+# 내려간다 — 재보니 약점이 드러난 것이라 그게 맞다.
 
 
 def tier_of(followers: int) -> str:
@@ -144,44 +163,82 @@ def tier_of(followers: int) -> str:
 
 
 # 각 표: 신호값 → {티어: 점수}. 소형·중형이 같은 항목은 값도 같게 둔다.
+#
+# 배점 배분(티어별 만점 100):
+#          도달   지역   외국인  음식
+#   소형     40     25     18     17
+#   중형     45     24     17     14
+#   대형     50     24     15     11
+# 도달(릴스 조회수)이 모든 티어에서 단일 최대 축이다 — 다음으로 큰 축은
+# 소형 부산 22, 중형 부산 18, 대형 한국 13이라 격차가 분명하다.
 BUSAN_PTS = {  # 지역 ① 부산 콘텐츠 비율
-    "over30": {"small": 30, "mid": 25, "large": 15},
-    "b15_30": {"small": 22, "mid": 18, "large": 11},
-    "b5_15": {"small": 14, "mid": 12, "large": 7},
-    "b1_5": {"small": 7, "mid": 6, "large": 4},
+    "over30": {"small": 22, "mid": 18, "large": 11},
+    "b15_30": {"small": 16, "mid": 13, "large": 8},
+    "b5_15": {"small": 10, "mid": 9, "large": 5},
+    "b1_5": {"small": 5, "mid": 4, "large": 3},
     "zero": {"small": 0, "mid": 0, "large": 0},
 }
 KOREA_PTS = {  # 지역 ② 한국(부산 외) 콘텐츠
-    "over30": {"small": 3, "mid": 8, "large": 18},
-    "b10_30": {"small": 2, "mid": 5, "large": 12},
-    "seoul_small": {"small": 1, "mid": 3, "large": 7},
+    "over30": {"small": 3, "mid": 6, "large": 13},
+    "b10_30": {"small": 2, "mid": 4, "large": 9},
+    "seoul_small": {"small": 1, "mid": 2, "large": 5},
     "none": {"small": 0, "mid": 0, "large": 0},
 }
 CAP_LANG_PTS = {  # 외국인 ① 캡션 언어
-    "foreign": {"small": 15, "mid": 15, "large": 12},
-    "mixed": {"small": 9, "mid": 9, "large": 7},
+    "foreign": {"small": 11, "mid": 11, "large": 9},
+    "mixed": {"small": 7, "mid": 7, "large": 5},
     "korean": {"small": 0, "mid": 0, "large": 0},
 }
 BIO_LANG_PTS = {  # 외국인 ② 바이오·계정명 언어
-    "foreign": {"small": 10, "mid": 10, "large": 8},
-    "mixed": {"small": 5, "mid": 5, "large": 4},
+    "foreign": {"small": 7, "mid": 6, "large": 6},
+    "mixed": {"small": 4, "mid": 3, "large": 3},
     "korean": {"small": 0, "mid": 0, "large": 0},
 }
 FOOD_PTS = {  # 음식 — 최근 게시물 중 음식 콘텐츠 비율
-    "over50": {"small": 25, "mid": 20, "large": 15},
-    "r30_50": {"small": 19, "mid": 15, "large": 11},
-    "r15_30": {"small": 13, "mid": 10, "large": 8},
-    "r5_15": {"small": 6, "mid": 5, "large": 4},
+    "over50": {"small": 17, "mid": 14, "large": 11},
+    "r30_50": {"small": 13, "mid": 11, "large": 8},
+    "r15_30": {"small": 9, "mid": 7, "large": 6},
+    "r5_15": {"small": 4, "mid": 4, "large": 3},
     "under5": {"small": 0, "mid": 0, "large": 0},
 }
-
-# 티어별 '계산 가능한' 만점(지역+외국인+음식). 100점 환산의 분모로 쓴다.
-#   지역: 부산최대 + 한국최대 / 외국인: 캡션최대 + 바이오최대 / 음식: 최대
-TIER_MAX = {
-    "small": 30 + 3 + 15 + 10 + 25,  # 83
-    "mid": 25 + 8 + 15 + 10 + 20,    # 78
-    "large": 15 + 18 + 12 + 8 + 15,  # 68
+# 도달 ① 조회수 배율 = 릴스 조회수 중앙값 / 팔로워.
+# '팔로워가 진짜인가, 알고리즘이 밀어주는가'를 본다. 팔로워를 사서 부풀린 계정은
+# 규모가 커도 배율이 바닥이라 여기서 걸린다. 릴스는 비팔로워에게도 뿌려지므로
+# 배율이 1을 넘는 것이 이상하지 않다(그래서 좋아요 ER과 기준선이 다르다).
+VIEW_RATE_PTS = {
+    "excellent": {"small": 26, "mid": 24, "large": 22},
+    "good": {"small": 19, "mid": 18, "large": 17},
+    "normal": {"small": 12, "mid": 12, "large": 11},
+    "low": {"small": 5, "mid": 6, "large": 5},
+    "poor": {"small": 0, "mid": 0, "large": 0},
 }
+# 도달 ② 절대 조회수(중앙값) — 실제로 몇 명에게 닿는가. 배율과 달리 규모를 그대로 본다.
+# 배점이 대형에 쏠린 건 대형 계정을 쓰는 이유가 곧 절대 도달이기 때문이다.
+# 소형이 손해 보지는 않는다 — 소형이 3만을 찍으면 배율도 만점권이라 축 전체가 만점이 된다.
+VIEWS_ABS_PTS = {
+    "over100k": {"small": 14, "mid": 21, "large": 28},
+    "v30k_100k": {"small": 14, "mid": 19, "large": 23},
+    "v10k_30k": {"small": 12, "mid": 15, "large": 17},
+    "v3k_10k": {"small": 7, "mid": 8, "large": 9},
+    "under3k": {"small": 0, "mid": 0, "large": 0},
+}
+
+# 조회수 배율의 구간 경계는 티어마다 다르다. 같은 1.0배라도 팔로워 3천 계정에서는
+# 평범하고 10만 계정에서는 대단한 수치다 — 경계를 하나로 두면 대형은 전부 바닥
+# 구간에, 소형은 전부 상위 구간에 몰려 축이 순위를 못 가른다.
+VIEW_RATE_CUTS = {
+    #          excellent  good  normal  low   (미만이면 poor)
+    "small": (3.0, 1.5, 0.7, 0.3),
+    "mid": (1.5, 0.8, 0.4, 0.15),
+    "large": (0.8, 0.4, 0.2, 0.08),
+}
+# 절대 조회수 경계는 티어와 무관하다 — 3만 회는 어느 계정에서든 3만 명이다.
+VIEWS_ABS_CUTS = ((100_000, "over100k"), (30_000, "v30k_100k"), (10_000, "v10k_30k"), (3_000, "v3k_10k"))
+
+# 릴스 표본이 이보다 적으면 도달 축을 채점하지 않는다(= 미측정 취급).
+# 릴스 1~2개의 중앙값은 그 계정의 평소 성과가 아니라 그날의 운에 가깝고,
+# 그걸로 40~50점(점수의 절반)을 움직이면 표본이 적은 계정만 위아래로 튄다.
+MIN_REELS_SAMPLE = 3
 
 # 등급 → 대시보드 배지(keep/maybe/drop). A·B는 컨택, C는 예비, D는 보류.
 GRADE_TO_FIT = {"A": "keep", "B": "keep", "C": "maybe", "D": "drop"}
@@ -196,6 +253,15 @@ def grade_of(score: int) -> str:
     if score >= 35:
         return "C"
     return "D"
+
+
+# 조회수를 아직 안 뽑은 계정이 받을 수 있는 최고 등급.
+# 도달이 점수의 40~50%를 차지하게 된 이상, 미측정 계정의 점수는 절반이 '평균이라고
+# 가정한 값'이다. 그 상태로 A(즉시 컨택)를 주면 실제로는 도달이 바닥인 계정에
+# 사람을 보내게 된다. 그래서 A는 조회수를 재본 계정에만 준다 — 화면에서 B로 뜬
+# 계정의 조회수를 뽑으면 A로 올라가거나 아래로 떨어지고, 그게 곧 검토 순서가 된다.
+UNMEASURED_GRADE_CAP = "B"
+_GRADE_ORDER = ["D", "C", "B", "A"]
 
 
 def passes_region_gate(tier: str, busan_ratio: str, korea_ratio: str) -> bool:
@@ -216,6 +282,8 @@ SIGNAL_LABEL = {
     "caption_lang": "캡션",
     "bio_lang": "바이오",
     "food_ratio": "음식",
+    "view_rate": "배율",
+    "views_abs": "도달",
 }
 # 신호값 → 사람이 읽는 라벨(계정별 채점 표의 '신호' 칸에 쓴다).
 BUCKET_LABEL = {
@@ -224,15 +292,93 @@ BUCKET_LABEL = {
     "caption_lang": {"foreign": "외국어", "mixed": "혼용", "korean": "한국어"},
     "bio_lang": {"foreign": "외국어", "mixed": "혼용", "korean": "한국어"},
     "food_ratio": {"over50": "50%+", "r30_50": "30~50%", "r15_30": "15~30%", "r5_15": "5~15%", "under5": "5%미만"},
+    # 배율 라벨은 구간 경계가 티어마다 달라 숫자를 못 박는다. 대신 티어 안에서의
+    # 상대 위치를 말로 쓴다(실제 배율 값은 reason·릴스 패널에 그대로 나온다).
+    "view_rate": {
+        "excellent": "매우 높음", "good": "높음", "normal": "보통",
+        "low": "낮음", "poor": "매우 낮음", "unknown": "미측정",
+    },
+    "views_abs": {
+        "over100k": "10만+", "v30k_100k": "3만~10만", "v10k_30k": "1만~3만",
+        "v3k_10k": "3천~1만", "under3k": "3천 미만", "unknown": "미측정",
+    },
 }
-# 채점 표의 행 정의: (표시명, 신호키, 배점표). explain_score/score_breakdown이 공유한다.
-SCORE_ROWS = [
+# 채점 표의 행 정의: (표시명, 신호키, 배점표).
+# BASE_ROWS는 크롤 텍스트만으로 항상 채점되고, REACH_ROWS는 릴스 조회수를
+# 추출한 계정에만 붙는다. 점수·설명·표가 모두 이 정의 하나만 본다.
+BASE_ROWS = [
     ("지역 · 부산", "busan_ratio", BUSAN_PTS),
     ("지역 · 한국(부산 외)", "korea_ratio", KOREA_PTS),
     ("외국인 · 캡션", "caption_lang", CAP_LANG_PTS),
     ("외국인 · 바이오", "bio_lang", BIO_LANG_PTS),
     ("음식", "food_ratio", FOOD_PTS),
 ]
+REACH_ROWS = [
+    ("도달 · 조회수 배율", "view_rate", VIEW_RATE_PTS),
+    ("도달 · 절대 조회수", "views_abs", VIEWS_ABS_PTS),
+]
+SCORE_ROWS = BASE_ROWS + REACH_ROWS
+
+
+def _rows_max(rows: list, tier: str) -> int:
+    """행 묶음의 티어별 만점. 배점표를 고치면 만점도 따라 움직이도록 계산해서 쓴다."""
+    return sum(max(opt.get(tier, 0) for opt in table.values()) for _label, _key, table in rows)
+
+
+# 티어별 만점. 도달 축이 없으면 나머지 세 축 만점(60/55/50)으로 환산하고,
+# 있으면 네 축 만점(100)이라 환산이 곧 항등식이 된다.
+TIER_MAX = {tier: _rows_max(BASE_ROWS, tier) for tier in TIER_LABEL}
+TIER_MAX_REACH = {tier: _rows_max(SCORE_ROWS, tier) for tier in TIER_LABEL}
+# 도달 축 배점(40/45/50)은 네 축 중 가장 무겁다 — 릴스 조회수가 광고 효과와
+# 가장 직접 연결되는 지표라서다. 세 축 만점과 합쳐 정확히 100이 되어야
+# 등급 임계값(A 70+ 등)이 그대로 의미를 갖는다.
+assert set(TIER_MAX_REACH.values()) == {100}, TIER_MAX_REACH
+
+
+def has_reach(verdict: dict) -> bool:
+    """도달 축을 채점할 수 있는 계정인지(릴스 조회수가 충분히 있는지)."""
+    return verdict.get("view_rate", "unknown") not in ("", "unknown", None)
+
+
+def grade_for(verdict: dict, score: int) -> str:
+    """점수 → 등급. 조회수 미측정이면 UNMEASURED_GRADE_CAP까지만 올라간다."""
+    grade = grade_of(score)
+    if has_reach(verdict):
+        return grade
+    cap = UNMEASURED_GRADE_CAP
+    return cap if _GRADE_ORDER.index(grade) > _GRADE_ORDER.index(cap) else grade
+
+
+def grade_capped(verdict: dict) -> bool:
+    """등급이 '조회수 미측정' 때문에 눌렸는지(화면에서 이유를 밝히려고 쓴다)."""
+    return not has_reach(verdict) and grade_of(verdict.get("score") or 0) != verdict.get("grade")
+
+
+def rows_for(verdict: dict) -> list:
+    return SCORE_ROWS if has_reach(verdict) else BASE_ROWS
+
+
+def max_for(verdict: dict) -> int:
+    tier = verdict.get("tier") or "small"
+    return (TIER_MAX_REACH if has_reach(verdict) else TIER_MAX)[tier]
+
+
+def _row_points(verdict: dict) -> list[tuple]:
+    """(표시명, 신호키, 신호값, 점수, 만점) — 점수·설명·표가 공유하는 단일 계산."""
+    tier = verdict.get("tier") or "small"
+    out = []
+    for label, key, table in rows_for(verdict):
+        value = verdict.get(key, "")
+        out.append(
+            (
+                label,
+                key,
+                value,
+                table.get(value, {}).get(tier, 0),
+                max(opt.get(tier, 0) for opt in table.values()),
+            )
+        )
+    return out
 
 
 def explain_score(verdict: dict) -> str:
@@ -245,44 +391,50 @@ def explain_score(verdict: dict) -> str:
     tier_ko = TIER_LABEL.get(tier, tier)
     if verdict.get("gate") == "fail":
         return f"지역 게이트 탈락({tier_ko}·부산 조건 미달) → 0점 (D)"
-    parts, raw = [], 0
-    for _label, key, table in SCORE_ROWS:
-        pts = table.get(verdict.get(key, ""), {}).get(tier, 0)
-        raw += pts
-        parts.append(f"{SIGNAL_LABEL[key]} {pts}")
+    rows = _row_points(verdict)
+    raw = sum(pts for _l, _k, _v, pts, _m in rows)
+    # 도달 축이 빠진 채점은 만점이 달라 점수의 뜻도 달라진다 — 머리말에 밝혀 둔다.
+    head = f"[{tier_ko}]" if has_reach(verdict) else f"[{tier_ko}·조회수 미측정]"
+    parts = " + ".join(f"{SIGNAL_LABEL[key]} {pts}" for _l, key, _v, pts, _m in rows)
+    # 등급이 눌렸으면 원래 몇 등급이었는지 같이 적는다 — 안 그러면 점수 70+에
+    # 등급 B인 행이 계산 실수처럼 보인다.
+    grade = verdict.get("grade", "")
+    if grade_capped(verdict):
+        grade = f"{grade}, 조회수 미측정이라 {grade_of(verdict.get('score') or 0)}→{grade}"
     return (
-        f"[{tier_ko}] " + " + ".join(parts)
-        + f" = {raw}/{TIER_MAX[tier]} → {verdict.get('score', 0)}점 ({verdict.get('grade', '')})"
+        f"{head} {parts} = {raw}/{max_for(verdict)}"
+        f" → {verdict.get('score', 0)}점 ({grade})"
     )
 
 
 def score_breakdown(verdict: dict) -> dict:
     """계정별 채점 표에 쓸 구조화된 배점 내역.
 
-    각 축(부산·한국·캡션·바이오·음식)마다 어떤 신호가 몇 점을 줬는지(만점 대비)
-    한 행씩 만들고, 합계·환산 점수·게이트 여부를 함께 담는다. 화면에서 표로 그린다.
+    각 축(부산·한국·캡션·바이오·음식·도달)마다 어떤 신호가 몇 점을 줬는지(만점
+    대비) 한 행씩 만들고, 합계·환산 점수·게이트 여부를 함께 담는다. 화면에서
+    표로 그린다. 조회수를 추출하지 않은 계정은 도달 행 자체가 빠지고,
+    reach_measured가 False로 온다(화면이 '아직 안 쟀음'을 구분할 수 있게).
     """
     tier = verdict.get("tier") or "small"
-    rows = []
-    for label, key, table in SCORE_ROWS:
-        val = verdict.get(key, "")
-        pts = table.get(val, {}).get(tier, 0)
-        max_pts = max(opt.get(tier, 0) for opt in table.values())
-        rows.append(
-            {
-                "dim": label,
-                "signal": BUCKET_LABEL.get(key, {}).get(val, val or "-"),
-                "points": pts,
-                "max": max_pts,
-            }
-        )
-    raw = sum(r["points"] for r in rows)
+    rows = [
+        {
+            "dim": label,
+            "signal": BUCKET_LABEL.get(key, {}).get(value, value or "-"),
+            "points": pts,
+            "max": max_pts,
+        }
+        for label, key, value, pts, max_pts in _row_points(verdict)
+    ]
     return {
         "tier": tier,
         "tier_label": TIER_LABEL.get(tier, tier),
         "rows": rows,
-        "raw": raw,
-        "max": TIER_MAX[tier],
+        "raw": sum(r["points"] for r in rows),
+        "max": max_for(verdict),
+        "reach_measured": has_reach(verdict),
+        # 등급이 조회수 미측정으로 눌렸으면, 재보면 받을 수 있었던 등급도 같이 준다.
+        "grade_capped": grade_capped(verdict),
+        "grade_uncapped": grade_of(verdict.get("score") or 0),
         "gate_failed": verdict.get("gate") == "fail",
         "score": verdict.get("score", 0),
         "grade": verdict.get("grade", ""),
@@ -431,6 +583,62 @@ def analyze_text_signals(row: dict) -> dict:
         "reason": reason,
     }
 
+
+def _view_rate_bucket(rate: float, tier: str) -> str:
+    """조회수 배율 → 구간. 경계가 티어마다 다르므로 티어를 함께 받는다."""
+    excellent, good, normal, low = VIEW_RATE_CUTS[tier]
+    if rate >= excellent:
+        return "excellent"
+    if rate >= good:
+        return "good"
+    if rate >= normal:
+        return "normal"
+    if rate >= low:
+        return "low"
+    return "poor"
+
+
+def _views_abs_bucket(median: int) -> str:
+    for cut, name in VIEWS_ABS_CUTS:
+        if median >= cut:
+            return name
+    return "under3k"
+
+
+def analyze_reels_signals(reel: dict | None, followers: int, tier: str) -> dict:
+    """릴스 조회수(reels.csv 한 행) → 도달 축 신호.
+
+    채점하려면 셋 다 있어야 한다: 표본 MIN_REELS_SAMPLE개 이상, 0보다 큰
+    조회수 중앙값, 0보다 큰 팔로워 수(배율의 분모). 하나라도 없으면 'unknown'을
+    돌려주고, 그러면 도달 축 자체가 채점에서 빠진다(0점이 아니라 미측정).
+
+    reason에는 실제 배율을 숫자로 남긴다 — 구간 이름('높음')만으로는 1.6배인지
+    2.9배인지 알 수 없어 계정끼리 비교가 안 된다.
+    """
+    unmeasured = {"view_rate": "unknown", "views_abs": "unknown", "reels_reason": ""}
+    if not reel:
+        return unmeasured
+
+    count = reel.get("reels_count") or 0
+    median = reel.get("views_median") or 0
+    if not isinstance(count, int) or not isinstance(median, int):
+        return unmeasured  # CSV에서 빈 칸으로 읽힌 경우("")
+    if count < MIN_REELS_SAMPLE or median <= 0:
+        note = reel.get("note") or ""
+        why = f"릴스 표본 {count}개(최소 {MIN_REELS_SAMPLE}개)" if count else (note or "릴스 없음")
+        return {**unmeasured, "reels_reason": f"도달 미측정 — {why}"}
+    if followers <= 0:
+        return {**unmeasured, "reels_reason": "도달 미측정 — 팔로워 수 없음"}
+
+    rate = median / followers
+    return {
+        "view_rate": _view_rate_bucket(rate, tier),
+        "views_abs": _views_abs_bucket(median),
+        "reels_reason": (
+            f"릴스 {count}개 중앙값 {median:,}회 · 팔로워 대비 {rate:.2f}배"
+        ),
+    }
+
 # ── 1단계: 선별(스크리닝) — 유일한 LLM 단계 ──────────────────
 # 스코어링은 코드가 키워드/스크립트로 계산하므로, LLM은 여기서만 쓴다:
 # '개인 vs 상업', '진짜 외국인 인플루언서인가' 같은 의미 판단은 키워드로 잡기
@@ -513,22 +721,18 @@ StopFn = Callable[[], bool]
 def compute_score(verdict: dict) -> int:
     """신호값을 0~100 점수로 환산한다(LLM이 아니라 코드가 계산).
 
-    계산 가능한 세 축(지역·외국인·음식)의 원점수를 티어별 만점으로 나눠
-    100점으로 환산한다. 지역 게이트를 통과하지 못하면 0점(등급 D)으로 둔다.
+    채점된 축의 원점수를 그 조합의 티어별 만점으로 나눠 100점으로 환산한다.
+    도달 축까지 있으면 만점이 이미 100이라 환산은 항등식이 된다.
+    지역 게이트를 통과하지 못하면 0점(등급 D)으로 둔다.
     """
     tier = verdict.get("tier") or "small"
-    busan = verdict.get("busan_ratio", "zero")
-    korea = verdict.get("korea_ratio", "none")
     # 게이트 탈락은 '지역 조건 미달'이라는 뜻이므로 다른 항목이 좋아도 0으로 내린다.
-    if not passes_region_gate(tier, busan, korea):
+    if not passes_region_gate(
+        tier, verdict.get("busan_ratio", "zero"), verdict.get("korea_ratio", "none")
+    ):
         return 0
-    raw = 0
-    raw += BUSAN_PTS.get(busan, {}).get(tier, 0)
-    raw += KOREA_PTS.get(korea, {}).get(tier, 0)
-    raw += CAP_LANG_PTS.get(verdict.get("caption_lang", "korean"), {}).get(tier, 0)
-    raw += BIO_LANG_PTS.get(verdict.get("bio_lang", "korean"), {}).get(tier, 0)
-    raw += FOOD_PTS.get(verdict.get("food_ratio", "under5"), {}).get(tier, 0)
-    return round(raw * 100 / TIER_MAX[tier])
+    raw = sum(pts for _l, _k, _v, pts, _m in _row_points(verdict))
+    return round(raw * 100 / max_for(verdict))
 
 
 def format_account(row: dict) -> str:
@@ -567,6 +771,93 @@ def load_verdicts(config: JudgeConfig | None = None) -> dict[str, dict]:
             row["score"] = int(sc) if sc.isdigit() else ""
             rows[row["username"]] = row
         return rows
+
+
+def write_verdicts(verdicts: list[dict], config: JudgeConfig) -> None:
+    """판정 CSV를 통째로 다시 쓴다(재채점처럼 기존 행을 고쳐야 할 때).
+
+    run_judging은 새 판정을 덧붙이기만 하므로 append로 충분하지만, 재채점은
+    이미 있는 행의 점수를 바꾸는 일이라 이어 쓸 수 없다.
+    """
+    with open(config.output_path, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=VERDICT_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        for row in verdicts:
+            writer.writerow({k: row.get(k, "") for k in VERDICT_FIELDS})
+
+
+def ensure_header(config: JudgeConfig) -> bool:
+    """CSV 헤더가 지금의 VERDICT_FIELDS와 다르면 파일을 새 헤더로 다시 쓴다.
+
+    run_judging은 결과를 append로 이어 붙이는데, DictWriter는 파일에 이미 있는
+    헤더가 아니라 VERDICT_FIELDS 순서로 값을 쓴다. 그래서 컬럼이 늘어난 뒤
+    옛 파일에 그냥 이어 붙이면 새 행만 칸이 밀려 저장된다(헤더는 옛 것, 값은 새
+    순서). 판정을 시작하기 전에 한 번 맞춰 두는 편이 안전하다.
+    """
+    path = config.output_path
+    if not path.exists():
+        return False
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        header = next(csv.reader(f), [])
+    if header == VERDICT_FIELDS:
+        return False
+    # 이름으로 읽어 이름으로 다시 쓴다 — 새 컬럼은 빈 칸으로 채워진다.
+    write_verdicts(list(load_verdicts(config).values()), config)
+    return True
+
+
+def rescore_all(config: JudgeConfig | None = None, log: LogFn = print) -> dict:
+    """저장된 판정의 점수를 **LLM 없이** 다시 매긴다.
+
+    스코어링은 크롤 텍스트와 릴스 조회수에서 코드가 계산하므로
+    (analyze_text_signals + analyze_reels_signals + 배점표), 다음 경우에
+    재호출 없이 점수만 새로 뽑을 수 있다:
+
+      - 갱신으로 캡션·소개글이 바뀌었을 때 → 지역·음식·언어 신호가 달라진다
+      - 릴스 조회수를 새로 추출했을 때 → 도달 축이 붙거나 값이 달라진다
+      - 배점표나 등급 임계값을 손봤을 때 → 순위가 달라진다
+
+    LLM이 정한 선별 결과(screen/screen_reason)는 그대로 둔다. 그건 '채점할
+    가치가 있는가'라는 별개 판단이고, 다시 물으면 API 비용이 든다. 선별에서
+    떨어진 계정은 애초에 점수가 없으므로 건드릴 것도 없다.
+    """
+    config = config or JudgeConfig()
+    stats = {"ok": False, "rescored": 0, "skipped": 0, "changed": 0}
+
+    verdicts = load_verdicts(config)
+    if not verdicts:
+        log("판정된 계정이 없습니다. 먼저 LLM 판정을 실행하세요.")
+        stats["ok"] = True
+        return stats
+
+    candidates = {row["username"]: row for row in read_candidates()}
+    reels = load_reels()
+    updated = []
+    for username, verdict in verdicts.items():
+        row = candidates.get(username)
+        # 선별 불합격이거나 후보 CSV에서 사라진 계정은 채점 대상이 아니다.
+        if verdict.get("screen") == "fail" or row is None:
+            updated.append(verdict)
+            stats["skipped"] += 1
+            continue
+        before = verdict.get("score")
+        fresh = {**verdict, **score_account(row, reels.get(username))}
+        updated.append(fresh)
+        stats["rescored"] += 1
+        if before != fresh["score"]:
+            stats["changed"] += 1
+            log(
+                f"  @{username}: {before}점 → {fresh['score']}점 "
+                f"({verdict.get('grade', '?')}→{fresh['grade']})"
+            )
+
+    write_verdicts(updated, config)
+    log(
+        f"재채점 완료. {stats['rescored']}건 채점 "
+        f"(점수 변동 {stats['changed']}건 / 미채점 {stats['skipped']}건)"
+    )
+    stats["ok"] = True
+    return stats
 
 
 def list_local_models(host: str | None = None) -> list[str]:
@@ -767,12 +1058,16 @@ def screen_account(client, row: dict, config: JudgeConfig) -> dict:
     return {"screen": screen, "screen_reason": reason}
 
 
-def score_account(row: dict) -> dict:
+def score_account(row: dict, reel: dict | None = None) -> dict:
     """2단계 — 스코어링. LLM 없이 크롤 텍스트로 신호를 뽑아 코드가 점수를 매긴다.
 
     신호(언어·음식·지역)는 analyze_text_signals가 캡션·소개글에서 정량 추출하고,
     티어·게이트·점수·등급·채점 이유는 배점표로 계산한다. 값이 흔들리지 않고,
     어떤 근거로 그 점수가 나왔는지 전부 추적된다.
+
+    reel(reels.csv의 해당 계정 행)을 주면 도달 축까지 채점한다. 안 주면
+    도달 축을 빼고 나머지 축으로만 환산한다 — 조회수는 계정마다 따로 추출하는
+    수동 작업이라, 아직 안 뽑았다는 이유로 점수가 깎이면 안 된다.
     """
     verdict = analyze_text_signals(row)
     try:
@@ -780,13 +1075,18 @@ def score_account(row: dict) -> dict:
     except (TypeError, ValueError):
         followers = 0
     verdict["tier"] = tier_of(followers)
+    reels_signals = analyze_reels_signals(reel, followers, verdict["tier"])
+    reels_reason = reels_signals.pop("reels_reason", "")
+    verdict.update(reels_signals)
+    if reels_reason:
+        verdict["reason"] = f"{verdict['reason']} · {reels_reason}"
     verdict["gate"] = (
         "pass"
         if passes_region_gate(verdict["tier"], verdict["busan_ratio"], verdict["korea_ratio"])
         else "fail"
     )
     verdict["score"] = compute_score(verdict)
-    verdict["grade"] = grade_of(verdict["score"])
+    verdict["grade"] = grade_for(verdict, verdict["score"])
     verdict["fit"] = GRADE_TO_FIT[verdict["grade"]]
     verdict["score_reason"] = explain_score(verdict)
     # 계정별 채점 표(구조화). CSV에는 저장하지 않고(VERDICT_FIELDS 밖) 화면 전달용.
@@ -794,7 +1094,7 @@ def score_account(row: dict) -> dict:
     return verdict
 
 
-def judge_account(client, row: dict, config: JudgeConfig) -> dict:
+def judge_account(client, row: dict, config: JudgeConfig, reel: dict | None = None) -> dict:
     """계정 한 건을 2단계로 판정한다: LLM 선별(합격/불합격) → 합격만 스코어링.
 
     실패(예외)는 그대로 올린다(호출부가 처리). 불합격이면 스코어링을 건너뛰어
@@ -805,7 +1105,7 @@ def judge_account(client, row: dict, config: JudgeConfig) -> dict:
     if verdict["screen"] == "fail":
         verdict["fit"] = "drop"  # 배지용. 등급·점수는 비워 둔다(미채점).
         return verdict
-    verdict.update(score_account(row))
+    verdict.update(score_account(row, reel))
     return verdict
 
 
@@ -855,6 +1155,15 @@ def run_judging(
     if no_captions:
         log(f"주의: {no_captions}개 계정은 캡션이 없어 소개글만으로 판단합니다.")
 
+    # 릴스 조회수는 계정마다 따로(수동으로) 뽑는 값이라, 지금 있는 것만 쓴다.
+    # 없는 계정은 도달 축을 빼고 채점하고, 나중에 추출하면 재채점으로 붙는다.
+    reels = load_reels()
+    with_reels = sum(1 for c in todo if c["username"] in reels)
+    if with_reels:
+        log(f"릴스 조회수가 있는 계정 {with_reels}개는 도달 축까지 채점합니다.")
+
+    if ensure_header(config):
+        log("판정 CSV의 컬럼이 바뀌어 헤더를 새 형식으로 맞췄습니다.")
     write_header = not config.output_path.exists()
     with open(config.output_path, "a", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=VERDICT_FIELDS, extrasaction="ignore")
@@ -867,7 +1176,7 @@ def run_judging(
             if should_stop():
                 return None, None
             try:
-                return judge_account(client, row, config), None
+                return judge_account(client, row, config, reels.get(row["username"])), None
             except Exception as e:
                 error_row = {"username": row.get("username", "?")}
                 return error_row, e

@@ -125,17 +125,24 @@
   td.grade-col { white-space: nowrap; }
   td.bio { max-width: 300px; color: var(--muted); font-size: 12px; }
   /* 소개글·판정 이유는 본문이 커져도 원래 크기로 — 표가 글 덩어리가 되지 않게 */
-  td.reason-col { max-width: 340px; font-size: 12.5px; }
-  td.reason-col .reason { color: var(--text); }
-  td.reason-col .no-reason { color: #c3c8d0; }
-  /* 채점 이유(점수 내역) 아래에 붙는 신호 근거 — 흐리게 보조로 */
-  td.reason-col .signal-reason { color: var(--muted); font-size: 11px; margin-top: 3px; }
+  /* 채점 표 옆에 붙는 근거들. 신호 근거는 흐리게 보조로. */
+  .bd-right .signal-reason { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  /* 1차 판정(선별) 근거 — 채점과는 다른 단계의 판단이라 선으로 끊어 구분한다. */
+  .bd-screen { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .bd-screen b { font-size: 11px; color: var(--muted); margin-right: 8px; }
+  .bd-screen p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text); }
 
   /* 계정별 채점 표(펼침) */
   tr.main-row { cursor: pointer; }
   /* 펼침 화살표는 전용 첫 칸에 둔다 — 선별 배지와 섞이면 어느 행이 펼쳐지는지
      눈에 안 들어온다. */
   .caret-col { width: 30px; padding-right: 0; text-align: center; cursor: default; }
+  /* 갱신 대상 선택 칸. 행 펼침과 겹치지 않게 캐럿 왼쪽에 따로 둔다. */
+  .check-col { width: 30px; padding-right: 0; text-align: center; }
+  .check-col input { cursor: pointer; margin: 0; vertical-align: middle; }
+  td.stamp-col { white-space: nowrap; color: var(--muted); font-size: 12px; }
+  /* 오래됐거나 한 번도 갱신 안 된 계정 — 눈에 띄어야 고르기 쉽다. */
+  td.stamp-col .stale { color: #b45309; font-weight: 600; }
   tr.main-row .caret {
     display: inline-block; color: var(--muted);
     transition: transform .15s; font-size: 19px; line-height: 1;
@@ -188,18 +195,81 @@
   .bd-formula .op { color: #c3c8d0; font-weight: 700; }
   .bd-formula .eq { font-weight: 700; font-size: 13px; }
   .bd-gatebox { margin-top: 10px; padding: 8px 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: var(--danger); font-weight: 600; font-size: 12px; }
+  /* 도달 축 미측정 안내 — 탈락(빨강)이 아니라 '아직 안 쟀음'이라 중립색으로 둔다. */
+  .bd-reachbox {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px;
+    padding: 8px 12px; background: #f8fafc; border: 1px dashed var(--border);
+    border-radius: 8px; color: var(--muted); font-size: 12px; line-height: 1.5;
+  }
 
-  /* 좌: 채점 표 / 우: 환산·채점 이유 섹션 */
-  .bd-detail { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
-  .bd-left { flex: 1 1 420px; min-width: 340px; }
+  /* 좌: 채점 표 / 우: 환산·채점 이유 섹션. stretch로 두 카드 높이를 맞춘다
+     (align-self를 남겨두면 컨테이너의 stretch를 덮어써서 오른쪽만 짧아진다).
+     왼쪽에도 같은 카드 표면을 줘야 높이를 맞춘 것이 눈에 보인다 — 맨 표로 두면
+     오른쪽 카드만 상세 행 바탕 위에 떠 있는 꼴이 된다. */
+  .bd-detail { display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch; }
+  .bd-left {
+    flex: 1 1 420px; min-width: 340px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 10px 16px 14px;
+  }
   .bd-left .bd-table { max-width: none; margin-top: 4px; }
   .bd-right {
-    flex: 1 1 300px; min-width: 280px; max-width: 440px; align-self: flex-start;
-    background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+    flex: 1 1 300px; min-width: 280px; max-width: 440px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px;
   }
   .bd-right .bd-panel { flex-direction: column; align-items: stretch; gap: 10px; margin-top: 0; }
   .bd-right .bd-scoremeter { max-width: none; }
   .bd-right .bd-formula { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  /* ── 협업 제안 DM ─────────────────────────────
+     본문은 읽기 전용 미리보기로만 보여주고, 입력은 슬롯 칸으로만 받는다.
+     그래야 '고칠 수 있는 부분'이 규칙이 아니라 구조로 정해진다. */
+  td.dm-col { white-space: nowrap; font-size: 12px; }
+  td.dm-col .dm-none { color: #c3c8d0; }
+  td.dm-col .dm-done { color: var(--ok); font-weight: 600; }
+  .drawer-backdrop { position: fixed; inset: 0; background: rgba(17,20,24,.34); z-index: 40; }
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 41;
+    width: min(620px, 94vw); display: flex; flex-direction: column;
+    background: var(--bg); border-left: 1px solid var(--border); box-shadow: -8px 0 28px rgba(17,20,24,.14);
+  }
+  /* hidden 속성은 브라우저 기본 스타일(display:none)로 동작하는데, 위의
+     display:flex가 그것보다 우선순위가 높아 서랍이 늘 떠 있게 된다.
+     클래스+속성 선택자로 다시 눌러 줘야 hidden이 실제로 먹는다. */
+  .drawer[hidden], .drawer-backdrop[hidden] { display: none; }
+  .drawer-head {
+    display: flex; align-items: center; gap: 10px; padding: 14px 18px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .drawer-head b { font-size: 14px; }
+  .drawer-count { font-size: 12px; color: var(--muted); }
+  .drawer-body { flex: 1 1 auto; overflow-y: auto; padding: 16px 18px 24px; }
+  .dm-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; margin-bottom: 14px;
+  }
+  .dm-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .dm-head .who { font-weight: 700; font-size: 13px; }
+  .dm-head .meta { font-size: 11px; color: var(--muted); }
+  .dm-head select { width: auto; padding: 4px 8px; font-size: 12px; }
+  .dm-slot { margin-bottom: 10px; }
+  .dm-slot label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .dm-slot textarea { min-height: 54px; resize: vertical; }
+  /* 미리보기 = 실제로 복사될 문장. 편집 불가라는 게 눈에 보여야 한다. */
+  .dm-preview {
+    margin: 12px 0 0; padding: 12px 14px; background: #f7f9fb;
+    border: 1px solid var(--border); border-radius: 8px;
+    font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap; word-break: break-word; color: var(--text);
+  }
+  /* 내가 채워 넣은 값. 어디가 고정 문장이고 어디가 입력값인지 한눈에 보이게.
+     채점 칩(.bd-chip)과 같은 색을 써서 화면 안에서 '입력값' 표시가 일관되게 읽힌다. */
+  .dm-preview .dm-fill {
+    background: #eaf1ff; color: var(--accent); font-weight: 600;
+    border-radius: 3px; padding: 0 3px;
+  }
+  .dm-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .dm-actions .sent-at { font-size: 11px; color: var(--ok); font-weight: 600; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   .table-wrap { overflow-x: auto; max-height: 520px; overflow-y: auto; }
@@ -221,6 +291,11 @@
   .badge.grade-D { background: #f3f4f6; color: var(--muted); }
   /* 지역 게이트 탈락 표시 */
   .gate-fail { display: inline-block; margin-left: 5px; font-size: 11px; font-weight: 700; color: var(--danger); }
+  /* 조회수 미측정으로 등급이 눌린 계정 — 탈락이 아니라 '더 올라갈 수 있음' 신호라 파랑. */
+  .grade-capped {
+    display: inline-block; margin-left: 5px; padding: 1px 5px; border-radius: 5px;
+    font-size: 10px; font-weight: 700; background: #eff6ff; color: var(--accent); cursor: help;
+  }
   td .reason { color: var(--text); }
 
   /* 판정 직후 그 행을 잠깐 강조해, 방금 채워진 계정이 눈에 들어오게 한다. */
@@ -296,12 +371,15 @@
   .rl-title .sub { font-weight: 400; color: var(--muted); margin-left: 8px; }
   /* stretch + 차트 flex:1 → 왼쪽 차트가 오른쪽 카드 높이에 맞춰 늘어난다.
      막대 높이는 %라서 늘어난 만큼 같이 커진다(아래 .rl-chart 참고). */
+  /* 윗줄: 그래프(표본 수만큼) + 요약 카드(남는 폭 전부). stretch라 둘의 높이가 같다.
+     카드를 고정폭으로 두면 넓은 화면에서 오른쪽이 통째로 비어 보인다. */
   .rl-detail { display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch; }
-  .rl-left { flex: 1 1 420px; min-width: 340px; display: flex; flex-direction: column; }
   .rl-right {
-    flex: 0 1 340px; min-width: 280px;
+    flex: 1 1 280px; min-width: 280px;
     background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
   }
+  /* 아랫줄: 표는 상세 영역 가로를 다 쓴다. */
+  .rl-tablecol { margin-top: 20px; }
 
   /* 오른쪽 요약 — 채점의 점수 패널과 같은 리듬 */
   .rl-scorebox { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
@@ -334,15 +412,36 @@
     background: #f3f4f6; color: #55606e; font-weight: 700; font-size: 11px;
   }
 
-  /* padding-top은 최댓값 라벨이 위 제목에 붙지 않게 띄우는 자리.
+  /* 차트도 오른쪽 요약과 같은 카드 표면에 올린다. 배경 없이 두면 막대가 상세
+     행 바탕(#f7f9fb) 위에 떠 있어 어디까지가 그래프인지 경계가 없다.
+     위쪽 padding은 최댓값 라벨이 카드 위 테두리에 붙지 않게 띄우는 자리.
      막대(height %)와 중앙값 선(bottom %)의 기준 상자를 같게 하려고 플롯을 따로 감쌌다 —
-     %는 막대가 콘텐츠 상자, bottom이 패딩 상자를 기준으로 잡아 padding만큼 어긋난다. */
+     %는 막대가 콘텐츠 상자, bottom이 패딩 상자를 기준으로 잡아 padding만큼 어긋난다.
+     그래서 padding은 바깥(.rl-chart)에만 주고 .rl-plot은 비워 둔다. */
   .rl-chart {
     display: flex; flex-direction: column;
-    flex: 1 1 auto; min-height: 180px; padding-top: 30px;
+    /* 표본 수만큼만 차지하고 남는 폭은 옆 카드에 넘긴다(늘지도 줄지도 않음). */
+    flex: 0 0 auto; min-height: 180px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    /* 오른쪽 여백은 중앙값 라벨이 앉을 자리다. 플롯 안에 두면 라벨의 불투명
+       배경이 그 높이에 걸친 막대를 가린다(실제로 19,000회 막대를 덮고 있었다). */
+    padding: 30px 78px 12px 16px;
+    width: fit-content; max-width: 100%;
   }
+  /* 가로폭 = 막대 24px × 표본 수 + 간격 8px × (표본 수 - 1). 딱 맞아떨어져
+     남거나 모자라는 폭이 없다. 폭을 넓힐 때는 막대를 굵히지 않고 간격을 벌린다 —
+     막대 24px 상한은 두께가 아니라 개수로 크기를 읽게 하려는 것이다.
+     표본이 아주 적을 때는 카드가 우스울 만큼 좁아지지 않게 200px을 바닥으로
+     두고 가운데 정렬한다.
+     폭은 px로만 정한다 — 부모(.rl-chart)가 fit-content라 폭이 자식에서 나오는데,
+     width에 %를 쓰면 그 %가 부모를 다시 참조하게 된다. 넘칠 때의 제한은
+     max-width로 거는데, 이쪽 %는 부모 폭이 정해진 뒤 계산되므로 안전하다. */
   .rl-plot {
-    position: relative; display: flex; align-items: flex-end; gap: 2px; flex: 1 1 auto;
+    position: relative; display: flex; align-items: flex-end; justify-content: center;
+    gap: 8px; flex: 1 1 auto;
+    width: max(200px, calc(var(--n, 12) * 32px - 8px)); max-width: 100%;
+    /* 막대가 서 있는 바닥선. 테두리라 패딩 상자 밖이므로 위의 % 계산에 영향이 없다. */
+    border-bottom: 1px solid var(--border);
   }
   .rl-plot .bar {
     position: relative; flex: 1 1 0; max-width: 24px; min-height: 2px;
@@ -355,23 +454,29 @@
   }
   /* 중앙값 기준선 — 이 계정의 '평소 성적'이 한눈에 보이게 */
   .rl-median { position: absolute; left: 0; right: 0; border-top: 1px solid #c3c8d0; }
+  /* 라벨은 플롯 오른쪽 바깥(카드 여백)에 선 높이로 놓는다. 막대 위가 아니라
+     데이터 영역 밖이므로 가릴 것이 없고, 배경으로 선을 끊을 필요도 없다. */
   .rl-median span {
-    position: absolute; right: 0; top: -13px; font-size: 10px; color: var(--muted);
-    background: #fff; padding: 0 3px;
+    position: absolute; left: 100%; margin-left: 7px; top: -7px;
+    font-size: 10px; color: var(--muted); white-space: nowrap;
   }
-  .rl-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 6px; }
+  /* 축 라벨은 카드 안, 바닥선 바로 아래. 밖에 두면 그래프와 분리돼 보인다. */
+  .rl-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 7px; }
   .rl-foot { font-size: 11px; color: var(--muted); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
   /* 차트의 표 버전 — 접어 두되 항상 닿을 수 있게 */
-  .rl-details { margin-top: 12px; }
-  .rl-details summary { font-size: 11px; color: var(--muted); cursor: pointer; }
+  .rl-details { margin-top: 16px; }
+  /* 표가 제 칸을 차지할 때는 칸 맨 위이므로 위 여백이 필요 없다. */
+  .rl-tablecol > .rl-details { margin-top: 0; }
+  .rl-details summary { font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
   .rl-details summary:hover { color: var(--accent); }
-  .rl-table { border-collapse: collapse; font-size: 12px; margin-top: 8px; min-width: 260px; }
+  /* 제 칸을 받았으니 그 폭을 다 쓴다. 내용 너비로 두면 칸 안에서 다시 좁아진다. */
+  .rl-table { border-collapse: collapse; font-size: 13px; margin-top: 10px; width: 100%; }
   /* 바깥 표의 th 규칙(sticky·대문자·포인터)이 옮겨붙지 않게 되돌린다. */
   .rl-table th, .rl-table td {
     padding: 4px 12px 4px 0; border-bottom: 1px solid var(--border); text-align: left;
     position: static; cursor: default; text-transform: none; letter-spacing: 0; z-index: auto;
   }
-  .rl-table th { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .rl-table th { font-size: 12px; color: var(--muted); font-weight: 600; }
   .rl-table .n { text-align: right; font-variant-numeric: tabular-nums; }
   .rl-table tr.pin td { color: var(--muted); }
 
@@ -522,6 +627,41 @@
         <button class="btn-primary" id="judgeBtn" type="button">판정 시작</button>
       </div>
     </section>
+
+    <section class="panel">
+      <h2>정보 갱신</h2>
+      <p class="hint" style="margin:-4px 0 12px">
+        이미 수집한 계정의 <strong>팔로워·소개글·캡션을 다시 받아옵니다.</strong>
+        발굴은 CSV에 이미 있는 계정을 건너뛰므로, 이걸 돌리지 않으면 처음 수집한
+        값이 그대로 남습니다. 아래 <strong>후보 목록에서 갱신할 계정을 체크</strong>한 뒤
+        실행하세요.
+      </p>
+      <div class="hint" id="selectedHint" style="margin-bottom:10px">선택된 계정이 없습니다.</div>
+      <div class="actions">
+        <button class="btn-primary" id="refreshDataBtn" type="button" disabled>갱신 시작</button>
+        <button class="btn-ghost" id="selectStaleBtn" type="button">오래된 계정</button>
+        <button class="btn-ghost" id="rescoreBtn" type="button">재채점</button>
+      </div>
+      <div class="hint" id="staleHint" style="margin-top:10px"></div>
+      <div class="hint" style="margin-top:6px">
+        재채점은 LLM을 호출하지 않습니다 — 갱신된 캡션이나 바뀐 배점표로
+        점수만 다시 계산합니다(무료·즉시).
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>협업 제안 DM</h2>
+      <p class="hint" style="margin:-4px 0 12px">
+        초안을 만들어 드립니다. <strong>발송은 직접 하세요</strong> — 첫 DM을 자동으로
+        보내면 계정이 막힐 수 있어, 복사해서 인스타에 붙여넣는 방식입니다.
+        아래 값은 모든 DM에 공통으로 들어갑니다.
+      </p>
+      <div id="dmCommonFields"></div>
+      <div class="actions">
+        <button class="btn-primary" id="dmOpenBtn" type="button" disabled>선택한 계정 DM 초안</button>
+      </div>
+      <div class="hint" id="dmHint" style="margin-top:10px"></div>
+    </section>
   </div>
 
   <!-- ── 오른쪽: 로그 + 결과 ───────────────────── -->
@@ -537,7 +677,9 @@
         <input type="text" id="search" placeholder="계정명 · 이름 · 소개글 검색">
         <span class="spacer"></span>
         <button class="btn-ghost" id="refreshBtn" type="button">새로고침</button>
-        <a class="btn btn-ghost" id="downloadBtn" href="/api/candidates.csv">CSV 다운로드</a>
+        <!-- 엑셀은 점수·등급·조회수까지 합친 표, CSV는 크롤 원본 그대로. -->
+        <a class="btn btn-ghost" id="exportBtn" href="/api/export.xlsx">엑셀 다운로드</a>
+        <a class="btn btn-ghost" id="downloadBtn" href="/api/candidates.csv">CSV 원본</a>
       </div>
       <div class="progress" id="judgeProgress">
         <div class="progress-track"><div class="progress-bar active" id="judgeBar"></div></div>
@@ -554,6 +696,8 @@
         <table>
           <thead>
             <tr>
+              <!-- 갱신 대상 선택. 헤더 체크박스는 '지금 보이는 행 전체'를 토글한다. -->
+              <th class="check-col"><input type="checkbox" id="selectAll" title="보이는 계정 모두 선택"></th>
               <th class="caret-col"></th>
               <th data-key="screen">선별</th>
               <th data-key="score" class="num">점수</th>
@@ -563,9 +707,10 @@
               <th data-key="followers" class="num">팔로워</th>
               <th data-key="views_median">릴스 조회수</th>
               <th data-key="hangul_ratio" class="num">한글</th>
+              <th data-key="updated_at">마지막 갱신</th>
               <th data-key="email">이메일</th>
               <th data-key="biography">소개글</th>
-              <th data-key="screen_reason">1차 판정 이유</th>
+              <th data-key="dm_sent_at">DM</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -575,6 +720,18 @@
     </section>
   </div>
 </main>
+
+<!-- 협업 제안 DM 초안. 표 안에서 편집·복사하기는 좁아서 서랍으로 띄운다. -->
+<div class="drawer-backdrop" id="dmBackdrop" hidden></div>
+<aside class="drawer" id="dmDrawer" hidden aria-label="협업 제안 DM 초안">
+  <header class="drawer-head">
+    <b>협업 제안 DM 초안</b>
+    <span class="drawer-count" id="dmCount"></span>
+    <span class="spacer"></span>
+    <button class="btn-ghost" id="dmCloseBtn" type="button">닫기</button>
+  </header>
+  <div class="drawer-body" id="dmCards"></div>
+</aside>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -586,6 +743,36 @@ let evtSource = null;
 const flashUntil = new Map();
 // 계정별 채점 표가 펼쳐진 계정들(username). 재렌더 사이에 유지된다.
 const expanded = new Set();
+// 갱신 대상으로 체크한 계정들(username). 검색·정렬로 화면에서 사라져도 유지된다
+// — 필터를 바꿨다고 선택이 풀리면 여러 조건으로 나눠 고를 수가 없다.
+const selected = new Set();
+
+// '마지막 갱신' 칸. 오래된 계정을 눈으로 바로 찾을 수 있게 경과일도 같이 쓴다.
+function updatedCell(r) {
+  if (!r.updated_at) return `<span class="stale">미갱신</span>`;
+  const when = new Date(r.updated_at);
+  if (isNaN(when)) return escapeHtml(r.updated_at);
+  const days = Math.floor((Date.now() - when) / 86400000);
+  const label = days <= 0 ? "오늘" : `${days}일 전`;
+  return `<span class="${days >= 7 ? "stale" : ""}">${label}</span>`;
+}
+
+// 선택 상태 → 패널의 안내문·버튼. 렌더와 선택 변경 양쪽에서 부른다.
+function updateSelection() {
+  const count = selected.size;
+  $("refreshDataBtn").disabled = count === 0 || $("runBtn").disabled;
+  $("selectedHint").textContent = count
+    // 계정당 프로필+캡션 두 번 대기하므로 delay × 2가 실제 소요에 가깝다.
+    ? `${count}개 선택됨 — 예상 ${Math.max(1, Math.round(count * Number($("delay").value || 6) * 2 / 60))}분`
+    : "선택된 계정이 없습니다.";
+  const boxes = [...document.querySelectorAll("[data-pick]")];
+  const all = $("selectAll");
+  all.checked = boxes.length > 0 && boxes.every((b) => b.checked);
+  // 일부만 선택된 상태는 '반쯤 찬' 체크박스로 보여준다.
+  all.indeterminate = !all.checked && boxes.some((b) => b.checked);
+  // 선택은 갱신과 DM이 같이 쓴다.
+  if (dmConfig) updateDmPanel();
+}
 
 // ── 상태 표시 ──────────────────────────────────
 const STATE_LABEL = {
@@ -598,18 +785,24 @@ function setState(state, kind) {
   const pill = $("statePill");
   pill.className = "pill " + (state === "idle" ? "" : state);
   const label = STATE_LABEL[state] || state;
-  const prefix = state === "running" && jobKind === "judge" ? "판정 " : "";
+  const KIND_PREFIX = { judge: "판정 ", refresh: "갱신 " };
+  const prefix = state === "running" ? (KIND_PREFIX[jobKind] || "") : "";
   $("stateText").textContent = prefix + label;
   const running = state === "running";
-  // 잡은 한 번에 하나만 돈다 — 실행 중에는 양쪽 시작 버튼을 모두 잠근다.
+  // 잡은 한 번에 하나만 돈다 — 실행 중에는 시작 버튼을 모두 잠근다.
   $("runBtn").disabled = running;
   $("judgeBtn").disabled = running;
+  $("rescoreBtn").disabled = running;
+  $("selectStaleBtn").disabled = running;
   $("stopBtn").disabled = !running;
   $("runBtn").textContent = running && jobKind === "discover" ? "실행 중..." : "발굴 시작";
   $("judgeBtn").textContent = running && jobKind === "judge" ? "판정 중..." : "판정 시작";
+  $("refreshDataBtn").textContent = running && jobKind === "refresh" ? "갱신 중..." : "갱신 시작";
   // 판정 진행 바는 판정 잡이 도는 동안에만 보인다.
   if (running && jobKind === "judge") { $("judgeProgress").classList.add("show"); updateJudgeProgress(); }
   else $("judgeProgress").classList.remove("show");
+  // 갱신 버튼은 '실행 중'과 '선택 여부'를 함께 봐야 해서 한곳에서 정한다.
+  updateSelection();
 }
 
 // 판정 진행률 = 전체 후보 중 판정이 채워진 비율. 행 이벤트마다 갱신한다.
@@ -685,8 +878,10 @@ function renderTable() {
   const now = Date.now();
   for (const r of sorted) {
     const tr = document.createElement("tr");
-    // 채점 표가 있거나 릴스 조회수가 있으면 펼칠 거리가 있다.
-    const canExpand = !!((r.breakdown && r.breakdown.rows) || (r.reels && r.reels.reels_count));
+    // 펼칠 거리: 채점 표 · 릴스 조회수 · 1차 판정 근거. 판정 근거를 빼먹으면
+    // 선별에서 떨어진 계정(채점도 릴스도 없다)은 펼칠 수 없게 되고, 왜 떨어졌는지
+    // 볼 방법이 화면에서 사라진다.
+    const canExpand = !!((r.breakdown && r.breakdown.rows) || (r.reels && r.reels.reels_count) || r.screen);
     const isOpen = canExpand && expanded.has(r.username);
     const cls = [];
     if (flashUntil.get(r.username) > now) cls.push("just-judged");  // 방금 판정 강조
@@ -696,19 +891,22 @@ function renderTable() {
     tr.dataset.user = r.username;
     // 채점된 계정만 펼침 캐럿을 준다(클릭 시 계정별 채점 표).
     const caret = canExpand ? `<span class="caret">▸</span>` : `<span class="caret"></span>`;
+    const checked = selected.has(r.username) ? " checked" : "";
     tr.innerHTML = `
+      <td class="check-col"><input type="checkbox" data-pick="${escapeAttr(r.username)}"${checked}></td>
       <td class="caret-col">${caret}</td>
       <td>${screenBadge(r)}</td>
       <td class="num">${r.score === "" || r.score == null ? "-" : num(r.score)}</td>
-      <td class="grade-col">${gradeBadge(r.grade, r.gate)}</td>
+      <td class="grade-col">${gradeBadge(r.grade, r.gate, r.breakdown)}</td>
       <td><a href="${escapeAttr(r.profile_url)}" target="_blank" rel="noopener">@${escapeHtml(r.username)}</a></td>
       <td>${escapeHtml(r.full_name)}</td>
       <td class="num">${num(r.followers).toLocaleString()}</td>
       <td class="reels-col">${reelsCell(r)}</td>
       <td class="num">${Math.round(num(r.hangul_ratio) * 100)}%</td>
+      <td class="stamp-col">${updatedCell(r)}</td>
       <td>${r.email ? `<a href="mailto:${escapeAttr(r.email)}">${escapeHtml(r.email)}</a>` : "-"}</td>
       <td class="bio">${escapeHtml(r.biography || "")}</td>
-      <td class="reason-col">${screenReasonCell(r)}</td>`;
+      <td class="dm-col">${dmCell(r)}</td>`;
     tbody.appendChild(tr);
     if (isOpen) {
       const dr = document.createElement("tr");
@@ -716,11 +914,13 @@ function renderTable() {
       // 릴스 패널이 위, 채점 표가 아래. 둘 중 하나만 있는 계정도 있다.
       // 각각 <section>으로 감싸야 CSS가 둘 사이를 가로줄로 끊어 준다.
       const sec = (html) => (html ? `<section class="detail-sec">${html}</section>` : "");
+      // 채점이 없는 계정(선별 불합격 등)도 1차 판정 근거는 보여야 하므로,
+      // 채점 표 대신 근거만 담은 블록을 같은 자리에 세운다.
       const detail = sec(reelsPanel(r))
         + sec(r.breakdown && r.breakdown.rows
           ? `<h4 class="rl-title">계정별 채점<span class="sub">신호별 배점과 근거</span></h4>${renderBreakdown(r)}`
-          : "");
-      dr.innerHTML = `<td colspan="12">${detail}</td>`;
+          : screenPanel(r));
+      dr.innerHTML = `<td colspan="14">${detail}</td>`;
       tbody.appendChild(dr);
     }
   }
@@ -730,6 +930,7 @@ function renderTable() {
     : "아직 저장된 후보가 없습니다.";
   const judged = rows.filter((r) => r.fit).length;
   $("countPill").textContent = `후보 ${rows.length}건 · 판정 ${judged}건`;
+  updateSelection();  // 새로 그린 체크박스에 선택 상태를 다시 맞춘다
 }
 // 1단계 선별 결과. 합격만 점수·등급이 매겨진다.
 function screenBadge(r) {
@@ -737,11 +938,267 @@ function screenBadge(r) {
   if (r.screen === "fail") return `<span class="badge drop">불합격</span>`;
   return `<span class="badge keep">합격</span>`;
 }
-// 1차 판정(선별) 이유 — LLM이 합격/불합격을 그렇게 본 근거.
-function screenReasonCell(r) {
-  if (!r.screen) return `<span class="no-reason">—</span>`;
-  return `<span class="reason">${escapeHtml(r.screen_reason || "")}</span>`;
+// 1차 판정(선별) 근거 — LLM이 합격/불합격을 그렇게 본 이유. 표의 한 칸이 아니라
+// 펼침 안에 둔다. 한 문장짜리 서술이라 칸에 넣으면 잘리거나 표를 넓혀 버린다.
+function screenReasonBlock(r) {
+  if (!r.screen) return "";
+  return `
+    <div class="bd-screen">
+      <b>1차 판정</b>${screenBadge(r)}
+      <p>${escapeHtml(r.screen_reason || "(근거 없음)")}</p>
+    </div>`;
 }
+// 채점이 없는 계정용 — 펼치면 1차 판정 근거만 보여준다.
+function screenPanel(r) {
+  if (!r.screen) return "";
+  return `<h4 class="rl-title">1차 판정<span class="sub">채점 전 거르기 단계의 판단 근거</span></h4>
+    ${screenReasonBlock(r)}`;
+}
+// ── 협업 제안 DM ───────────────────────────────
+// 서버는 초안만 만들고 발송 여부를 기록한다. 실제 발송은 사람이 인스타에서 한다.
+let dmConfig = null;          // 템플릿 본문 + 슬롯 정의 + 저장된 공통 값
+const dmState = new Map();    // username -> {template, values}
+
+// 인사말에 쓸 호칭. 인스타 이름칸은 이름이 아니라 설명문인 경우가 많아
+// ("aichu / 부산 거주 일본인", "ガナダ(KR東京日韓交流会JP)") 그대로 쓰면
+// "Hi aichu / 부산 거주 일본인!"이 나간다. 첫 구분자 앞만 잘라 쓰고,
+// 그래도 이름 같지 않으면(너무 길면) 계정명으로 돌아간다. 어차피 수정 가능한 칸이다.
+function dmDefaultName(r) {
+  // NFC로 모아 쓰고 길이를 잰다. 인스타에서 온 한글은 자소가 분리된(NFD) 경우가
+  // 있어("슈이치입니다 Shuhana" = 21코드포인트) 정규화 없이 세면 멀쩡한 이름이
+  // 길이 제한에 걸려 계정명으로 밀린다.
+  const first = String(r.full_name || "").normalize("NFC").split(/[\/|·・,(（\[]/)[0].trim();
+  return first && first.length <= 20 ? first : r.username;
+}
+
+function dmCell(r) {
+  if (!r.dm_sent_at) return `<span class="dm-none">미발송</span>`;
+  return `<span class="dm-done">발송 ${escapeHtml(r.dm_sent_at.slice(5, 10))}</span>`;
+}
+
+// 미리보기 조립. 서버의 dm.render와 같은 규칙이어야 저장된 본문과 화면이 일치한다.
+// [[키]]…[[/키]] = 채워졌을 때만, [[^키]]…[[/^키]] = 비었을 때만 남는 구간.
+// 생략 가능한 슬롯을 그냥 비우면 "posts around Busan —  — really stood out."이
+// 남으므로, 앞뒤 문장부호까지 같이 사라져야 한다.
+//
+// text(복사·저장용)와 html(화면용, 채워 넣은 값에 색을 입힌 것)을 함께 돌려준다.
+// 색을 입히려면 태그가 필요한데 복사에는 태그가 섞이면 안 되므로, 값 자리를
+// 본문에 없을 제어문자로 감싼 뒤 한쪽은 떼어내고 한쪽은 태그로 바꾼다.
+const DM_MARK_OPEN = "\u0001";
+const DM_MARK_CLOSE = "\u0002";
+
+function dmRenderParts(templateKey, values) {
+  const tpl = dmConfig.templates.find((t) => t.key === templateKey);
+  if (!tpl) return { text: "", html: "" };
+  const filled = (k) => !!String(values[k] || "").trim();
+  let body = tpl.body.replace(
+    /\[\[(\^?)(\w+)\]\]([\s\S]*?)\[\[\/\1\2\]\]/g,
+    (_m, neg, key, inner) => ((neg ? !filled(key) : filled(key)) ? inner : ""),
+  );
+  for (const s of [...dmConfig.common_slots, ...dmConfig.account_slots]) {
+    const v = String(values[s.key] || "").trim();
+    // 빈 값은 표시할 것이 없으니 감싸지 않는다(빈 태그가 남지 않게).
+    body = body.split("{{" + s.key + "}}").join(v ? DM_MARK_OPEN + v + DM_MARK_CLOSE : "");
+  }
+  body = body.replace(/\n{3,}/g, "\n\n").trim();
+  return {
+    text: body.split(DM_MARK_OPEN).join("").split(DM_MARK_CLOSE).join(""),
+    html: escapeHtml(body)
+      .split(DM_MARK_OPEN).join('<span class="dm-fill">')
+      .split(DM_MARK_CLOSE).join("</span>"),
+  };
+}
+
+function dmCommonValues() {
+  const out = {};
+  for (const s of dmConfig.common_slots) out[s.key] = ($("dm-c-" + s.key) || {}).value || "";
+  return out;
+}
+
+function slotField(idPrefix, slot, value) {
+  const id = idPrefix + slot.key;
+  const input = slot.multiline
+    ? `<textarea id="${id}" placeholder="${escapeAttr(slot.placeholder)}">${escapeHtml(value)}</textarea>`
+    : `<input type="text" id="${id}" value="${escapeAttr(value)}" placeholder="${escapeAttr(slot.placeholder)}">`;
+  return `<div class="dm-slot">
+    <label for="${id}">${escapeHtml(slot.label)}</label>${input}
+    ${slot.hint ? `<div class="hint">${escapeHtml(slot.hint)}</div>` : ""}
+  </div>`;
+}
+
+async function loadDmConfig() {
+  dmConfig = await (await fetch("/api/dm/config")).json();
+  $("dmCommonFields").innerHTML = dmConfig.common_slots
+    .map((s) => slotField("dm-c-", s, dmConfig.common[s.key] || "")).join("");
+  // 공통 값은 매번 다시 칠 이유가 없으니 입력이 끝나는 대로 저장해 둔다.
+  for (const s of dmConfig.common_slots) {
+    $("dm-c-" + s.key).addEventListener("change", saveDmCommon);
+  }
+  updateDmPanel();
+}
+
+async function saveDmCommon() {
+  await fetch("/api/dm/common", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ values: dmCommonValues() }),
+  });
+  // 서랍이 열려 있으면 바뀐 공통 값을 미리보기에 즉시 반영한다.
+  document.querySelectorAll(".dm-card").forEach(refreshDmCard);
+}
+
+function updateDmPanel() {
+  const n = selected.size;
+  $("dmOpenBtn").disabled = n === 0 || $("runBtn").disabled;
+  $("dmOpenBtn").textContent = n ? `선택한 ${n}개 DM 초안` : "선택한 계정 DM 초안";
+  const missing = dmConfig
+    ? dmConfig.common_slots.filter((s) => !(dmCommonValues()[s.key] || "").trim()).map((s) => s.label)
+    : [];
+  $("dmHint").textContent = !n
+    ? "후보 목록에서 보낼 계정을 체크하세요."
+    : missing.length
+      ? `아직 비어 있는 공통 값: ${missing.join(" · ")}`
+      : `${n}개 계정의 초안을 만듭니다. 복사해서 인스타에 붙여넣으세요.`;
+}
+
+function openDmDrawer() {
+  const users = [...selected];
+  const byUser = new Map(rows.map((r) => [r.username, r]));
+  $("dmCount").textContent = `${users.length}개 계정`;
+  $("dmCards").innerHTML = users.map((u) => {
+    const r = byUser.get(u) || { username: u };
+    const st = dmState.get(u) || { template: dmConfig.default_template, values: {} };
+    // 비워 두면 "Hi !"가 나가므로 항상 기본값을 채워 둔다.
+    if (!st.values.name) st.values.name = dmDefaultName(r);
+    dmState.set(u, st);
+    const opts = dmConfig.templates
+      .map((t) => `<option value="${t.key}"${t.key === st.template ? " selected" : ""}>${escapeHtml(t.label)}</option>`)
+      .join("");
+    const meta = [
+      r.grade ? `${r.grade}등급` : null,
+      r.followers ? `팔로워 ${num(r.followers).toLocaleString()}` : null,
+      r.views_median ? `릴스 ${fmtCompact(r.views_median)}회` : null,
+    ].filter(Boolean).join(" · ");
+    return `<article class="dm-card" data-user="${escapeAttr(u)}">
+      <div class="dm-head">
+        <span class="who">@${escapeHtml(u)}</span>
+        <span class="meta">${escapeHtml(meta)}</span>
+        <span class="spacer"></span>
+        <select data-dm-tpl title="거주 구분">${opts}</select>
+      </div>
+      ${dmConfig.account_slots.map((s) => slotField(`dm-a-${u}-`, s, st.values[s.key] || "")).join("")}
+      <pre class="dm-preview"></pre>
+      <!-- 두 템플릿 모두 "주소 사진을 첨부했다"고 쓰므로, 첨부를 빼먹으면
+           있지도 않은 사진을 가리키는 DM이 나간다. 눈에 보이게 적어 둔다. -->
+      <div class="hint dm-tplhint" style="margin-top:8px"></div>
+      <div class="dm-actions">
+        <button class="btn-primary" data-dm-act="copy" type="button">복사</button>
+        <a class="btn btn-ghost" href="${escapeAttr(r.profile_url || `https://www.instagram.com/${u}/`)}"
+           target="_blank" rel="noopener">인스타 열기</a>
+        <span class="spacer"></span>
+        <button class="btn-ghost" data-dm-act="sent" type="button">발송함 표시</button>
+        <span class="sent-at"></span>
+      </div>
+    </article>`;
+  }).join("");
+  document.querySelectorAll(".dm-card").forEach(refreshDmCard);
+  $("dmDrawer").hidden = false;
+  $("dmBackdrop").hidden = false;
+}
+
+function closeDmDrawer() {
+  $("dmDrawer").hidden = true;
+  $("dmBackdrop").hidden = true;
+}
+
+// 카드 하나의 입력값을 모아 미리보기를 다시 그린다.
+function refreshDmCard(card) {
+  const u = card.dataset.user;
+  const st = dmState.get(u);
+  st.template = card.querySelector("[data-dm-tpl]").value;
+  for (const s of dmConfig.account_slots) {
+    st.values[s.key] = card.querySelector(`#dm-a-${CSS.escape(u)}-${s.key}`).value;
+  }
+  // innerHTML로 넣지만 값·본문 모두 escapeHtml을 거친 뒤라 태그는 우리가 붙인
+  // 강조 span뿐이다. 복사는 textContent를 쓰므로 태그가 섞이지 않는다.
+  const parts = dmRenderParts(st.template, { ...dmCommonValues(), ...st.values });
+  card.querySelector(".dm-preview").innerHTML = parts.html;
+  const tpl = dmConfig.templates.find((t) => t.key === st.template);
+  card.querySelector(".dm-tplhint").textContent = tpl ? tpl.hint : "";
+  const row = rows.find((r) => r.username === u);
+  card.querySelector(".sent-at").textContent =
+    row && row.dm_sent_at ? `발송함 ${row.dm_sent_at.slice(0, 10)}` : "";
+}
+
+// 클립보드 API는 보안 컨텍스트에서만 동작한다. 이 서버는 0.0.0.0에 바인딩되어
+// 동료가 http://<사내IP>:8000 으로 열 수도 있는데, 그 경우 API가 막힌다.
+// 그래서 임시 textarea + execCommand로 되돌아가는 길을 둔다.
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* 아래 대체 경로로 */ }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand("copy");
+  ta.remove();
+  return ok;
+}
+
+async function markDmSent(card) {
+  const u = card.dataset.user;
+  const st = dmState.get(u);
+  const res = await fetch("/api/dm/sent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: u, template: st.template,
+                           values: { ...dmCommonValues(), ...st.values } }),
+  });
+  if (!res.ok) {
+    banner("발송 기록을 저장하지 못했습니다.");
+    return;
+  }
+  const data = await res.json();
+  const row = rows.find((r) => r.username === u);
+  if (row) { row.dm_sent_at = data.saved.sent_at; row.dm_template = data.saved.template; }
+  renderTable();
+  refreshDmCard(card);
+  banner(`@${u} 발송함으로 기록했습니다.`, "info");
+}
+
+$("dmOpenBtn").addEventListener("click", openDmDrawer);
+$("dmCloseBtn").addEventListener("click", closeDmDrawer);
+$("dmBackdrop").addEventListener("click", closeDmDrawer);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("dmDrawer").hidden) closeDmDrawer();
+});
+// 입력·템플릿 변경은 위임으로 받는다 — 카드가 열 때마다 새로 그려지기 때문.
+$("dmCards").addEventListener("input", (e) => {
+  const card = e.target.closest(".dm-card");
+  if (card) refreshDmCard(card);
+});
+$("dmCards").addEventListener("change", (e) => {
+  const card = e.target.closest(".dm-card");
+  if (card) refreshDmCard(card);
+});
+$("dmCards").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-dm-act]");
+  if (!btn) return;
+  const card = btn.closest(".dm-card");
+  if (btn.dataset.dmAct === "copy") {
+    const ok = await copyText(card.querySelector(".dm-preview").textContent);
+    banner(ok ? "복사했습니다. 인스타 DM에 붙여넣으세요." : "복사에 실패했습니다. 직접 선택해 복사해주세요.",
+           ok ? "info" : "error");
+  } else if (btn.dataset.dmAct === "sent") {
+    await markDmSent(card);
+  }
+});
+
 // ── 릴스 조회수 ────────────────────────────────
 // 추출은 서버가 아니라 Claude Code(Claude for Chrome)가 한다. 버튼은 요청을
 // 큐에 넣을 뿐이고, 이 화면은 큐 상태와 저장된 결과를 폴링해서 보여준다.
@@ -814,11 +1271,12 @@ function reelsPanel(r) {
     ? `<span class="rl-median" style="bottom:${pct(median)}%"><span>중앙값 ${fmtCompact(median)}</span></span>`
     : "";
 
-  const left = single ? "" : `
-    <div class="rl-left">
-      <div class="rl-chart"><div class="rl-plot">${medianLine}${bars}</div></div>
+  // 그래프 폭은 표본 수에 비례한다(--n을 CSS로 넘긴다). 폭을 고정하면 표본이
+  // 적은 계정은 왼쪽에 막대 몇 개만 몰리고 오른쪽이 텅 빈다.
+  const chart = single ? "" : `
+    <div class="rl-chart" style="--n:${views.length}">
+      <div class="rl-plot">${medianLine}${bars}</div>
       <div class="rl-axis"><span>오래됨</span><span>최신</span></div>
-      ${reelsTable(views, pinned)}
     </div>`;
 
   // 오른쪽 요약 카드 — 채점 패널과 같은 구성(큰 숫자 → 미터 → 보조 수치).
@@ -870,18 +1328,23 @@ function reelsPanel(r) {
   const subtitle = single
     ? "릴스 1개 — 추이를 볼 표본이 아닙니다"
     : `최근 ${views.length}개 · 오래된 것부터 최신 순`;
+  // 윗줄은 그래프와 요약 카드가 나란히(높이 일치), 표는 그 아래 전체 폭.
+  // 표에 폭을 주지 않으면 세 칸짜리 내용 너비로 쪼그라들어 지나치게 좁아진다.
   return `
     <h4 class="rl-title">릴스 조회수<span class="sub">${subtitle}</span></h4>
-    <div class="rl-detail">${left}${right}</div>`;
+    <div class="rl-detail">${chart}${right}</div>
+    ${single ? "" : `<div class="rl-tablecol">${reelsTable(views, pinned)}</div>`}`;
 }
 // 차트의 표 버전. 툴팁이 값을 읽는 유일한 수단이 되지 않도록 항상 함께 둔다.
+// open이 기본이다 — 표에 가로 절반을 내줬으므로 접어 두면 그 칸이 빈 채로 남는다.
+// 접는 기능 자체는 남겨, 행이 많은 계정에서 목록을 줄일 수 있게 한다.
 function reelsTable(views, pinned) {
   const rows = views.map((v, i) =>
     `<tr><td>${i + 1}</td><td class="n">${num(v).toLocaleString()}</td><td>일반</td></tr>`).join("")
     + (pinned || []).map((v) =>
       `<tr class="pin"><td>—</td><td class="n">${num(v).toLocaleString()}</td><td>고정 · 통계 제외</td></tr>`).join("");
   return `
-    <details class="rl-details">
+    <details class="rl-details" open>
       <summary>표로 보기</summary>
       <table class="rl-table">
         <thead><tr><th>#</th><th class="n">조회수</th><th>구분</th></tr></thead>
@@ -921,11 +1384,20 @@ function applyReelsQueue(queue) {
 
 async function refreshReels() {
   const data = await (await fetch("/api/reels")).json();
+  // 조회수가 새로 들어오면 서버가 그 계정을 재채점한다(도달 축이 붙는다).
+  // 그래서 릴스 칸만 갈아끼우면 조회수는 최신인데 점수·등급·채점 표는 옛날
+  // 값인 행이 남는다. 새 결과가 하나라도 보이면 후보 전체를 다시 받아온다.
+  let fresh = false;
   for (const r of rows) {
     const reel = data.rows[r.username];
+    if ((reel ? reel.collected_at : "") !== (r.reels ? r.reels.collected_at : "")) fresh = true;
     r.reels = reel || null;
     r.views_median = reel ? reel.views_median : "";
     r.reels_count = reel ? reel.reels_count : "";
+  }
+  if (fresh) {
+    await loadCandidates();  // 안에서 큐 반영 + 렌더까지 한다
+    return;
   }
   applyReelsQueue(data.queue);
   renderTable();
@@ -997,6 +1469,20 @@ function renderBreakdown(r) {
     </div>`;
   const gateBox = bd.gate_failed
     ? `<div class="bd-gatebox">지역 게이트 탈락 · 부산 조건 미달 → 최종 0점 (D)</div>` : "";
+  // 도달 축(릴스 조회수)은 아직 안 뽑은 계정에는 아예 없다. 점수의 40~50%를
+  // 차지하는 축이 빠졌다는 것과 그래서 등급이 눌렸다는 것을 같이 밝혀 둔다 —
+  // 안 그러면 조회수 있는 계정과 없는 계정의 점수를 같은 잣대로 오해한다.
+  const reachBox = bd.reach_measured ? "" : `
+    <div class="bd-reachbox">
+      <div>
+        <b>릴스 조회수 미측정</b> — 가장 비중이 큰 도달 축(100점 중 ${100 - bd.max}점)을 빼고
+        나머지 축만 ${bd.max}점 만점으로 채점했습니다. 지금 점수는 도달이 '평균'이라고 가정한 값입니다.
+        ${bd.grade_capped
+          ? `실제로 재보기 전까지 등급은 <b>${escapeHtml(bd.grade)}</b>까지만 줍니다(재면 ${escapeHtml(bd.grade_uncapped)}등급까지 가능).`
+          : ""}
+      </div>
+      <button class="reels-btn" data-reels="${escapeAttr(r.username)}" type="button">조회수 추출</button>
+    </div>`;
   const signal = r.reason
     ? `<div class="signal-reason">근거: ${escapeHtml(r.reason)}</div>` : "";
   return `
@@ -1010,16 +1496,21 @@ function renderBreakdown(r) {
         </table>
       </div>
       <div class="bd-right">
-        ${scorePanel}${formula}${gateBox}${signal}
+        ${scorePanel}${formula}${gateBox}${reachBox}${signal}${screenReasonBlock(r)}
       </div>
     </div>`;
 }
-// 회의록 랭킹 등급(A/B/C/D). 지역 게이트 탈락이면 옆에 표시한다.
-function gradeBadge(grade, gate) {
+// 회의록 랭킹 등급(A/B/C/D). 지역 게이트 탈락·조회수 미측정이면 옆에 표시한다.
+function gradeBadge(grade, gate, bd) {
   if (!grade) return `<span class="badge none">-</span>`;
   const g = String(grade).toUpperCase();
   const fail = gate === "fail" ? `<span class="gate-fail" title="지역 게이트 탈락">게이트</span>` : "";
-  return `<span class="badge grade-${escapeAttr(g)}">${escapeHtml(g)}</span>${fail}`;
+  // 등급이 조회수 미측정으로 눌린 계정. 재보면 올라갈 수 있다는 걸 배지에서 알려준다 —
+  // 여기서 안 보이면 '점수 97에 B등급'이 계산 오류처럼 읽힌다.
+  const capped = bd && bd.grade_capped
+    ? `<span class="grade-capped" title="릴스 조회수를 재면 ${escapeAttr(bd.grade_uncapped)}등급까지 갈 수 있습니다(도달 축 미측정이라 ${escapeAttr(grade)}로 제한).">↑${escapeHtml(bd.grade_uncapped)}?</span>`
+    : "";
+  return `<span class="badge grade-${escapeAttr(g)}">${escapeHtml(g)}</span>${fail}${capped}`;
 }
 // 인스타 소개글에는 임의의 문자가 들어오므로 항상 이스케이프해서 넣는다.
 function escapeHtml(s) {
@@ -1066,6 +1557,10 @@ function connectStream() {
       evtSource.close();
       if (msg.stats && msg.stats.error) banner(msg.stats.error);
       loadCandidates();
+      updateStaleHint();  // 갱신이 끝나면 남은 대상 수가 줄어든다
+      // 갱신이 끝난 계정은 선택을 풀어준다 — 방금 최신화한 것을 또 고를 이유가 없고,
+      // 남아 있으면 실수로 한 번 더 돌리기 쉽다.
+      if (jobKind === "refresh") selected.clear();
     }
   };
   // 잡이 끝나 서버가 스트림을 닫으면 EventSource가 자동 재연결을 시도한다.
@@ -1160,6 +1655,8 @@ async function init() {
 
   await loadCandidates();
   await loadModels();
+  await loadDmConfig();
+  await updateStaleHint();
 
   // 새로고침해도 진행 중인 잡에 다시 붙는다.
   const st = await (await fetch("/api/status")).json();
@@ -1182,6 +1679,14 @@ $("reelsClearBtn").addEventListener("click", async () => {
 // 채점된 행을 클릭하면 계정별 채점 표를 펼치거나 접는다(링크·릴스 버튼은 제외).
 $("tbody").addEventListener("click", (e) => {
   if (e.target.closest("a")) return;
+  // 체크박스 클릭은 선택만 바꾼다 — 행 펼침까지 같이 일어나면 성가시다.
+  const pick = e.target.closest("[data-pick]");
+  if (pick) {
+    if (pick.checked) selected.add(pick.dataset.pick);
+    else selected.delete(pick.dataset.pick);
+    updateSelection();
+    return;
+  }
   const reelsBtn = e.target.closest("[data-reels]");
   if (reelsBtn) {
     requestReels(reelsBtn.dataset.reels);
@@ -1212,6 +1717,77 @@ $("saveSeeds").addEventListener("click", async () => {
   });
   const data = await res.json();
   banner(`seeds.txt에 계정 ${data.saved}개를 저장했습니다.`, "info");
+});
+
+// 7일 넘게 지난 계정이 몇 개인지 알려준다(선택은 사용자가 한다).
+async function updateStaleHint() {
+  try {
+    const st = await (await fetch("/api/status")).json();
+    $("staleHint").textContent = st.stale_count
+      ? `7일 넘게 지난 계정 ${st.stale_count}개 (전체 ${st.saved_count}개)`
+      : `모든 계정이 최근에 갱신되었습니다 (전체 ${st.saved_count}개)`;
+  } catch { /* 상태 표시는 부가 정보라 실패해도 무시한다 */ }
+}
+
+// 헤더 체크박스: 지금 보이는(검색 결과) 행만 토글한다.
+$("selectAll").addEventListener("change", (e) => {
+  for (const box of document.querySelectorAll("[data-pick]")) {
+    if (e.target.checked) selected.add(box.dataset.pick);
+    else selected.delete(box.dataset.pick);
+    box.checked = e.target.checked;
+  }
+  updateSelection();
+});
+
+// 7일 넘게 지난 계정(미갱신 포함)을 한 번에 골라준다 — 하나씩 찾을 필요 없이.
+$("selectStaleBtn").addEventListener("click", () => {
+  const week = 7 * 86400000;
+  let added = 0;
+  for (const r of rows) {
+    const when = r.updated_at ? new Date(r.updated_at) : null;
+    if (!when || isNaN(when) || Date.now() - when >= week) {
+      selected.add(r.username);
+      added++;
+    }
+  }
+  renderTable();
+  banner(added ? `오래된 계정 ${added}개를 선택했습니다.` : "오래된 계정이 없습니다.", "info");
+});
+
+$("refreshDataBtn").addEventListener("click", async () => {
+  clearBanner();
+  const res = await fetch("/api/refresh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      usernames: [...selected],
+      captions_per_account: Number($("captionsPerAccount").value),
+      delay: Number($("delay").value),
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    banner(err.detail || "갱신을 시작하지 못했습니다.");
+    return;
+  }
+  resetLog();
+  setState("running", "refresh");
+  connectStream();
+});
+
+$("rescoreBtn").addEventListener("click", async () => {
+  clearBanner();
+  const res = await fetch("/api/rescore", { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    banner(data.detail || "재채점에 실패했습니다.");
+    return;
+  }
+  banner(
+    `재채점 완료 — ${data.rescored}건 채점, 점수가 바뀐 계정 ${data.changed}건.`,
+    "info",
+  );
+  await loadCandidates();
 });
 
 $("runBtn").addEventListener("click", async () => {

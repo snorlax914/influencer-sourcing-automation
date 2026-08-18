@@ -20,10 +20,12 @@ import re
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import instaloader
 
+from history import append_snapshot
 from session import (
     L,
     LogFn,
@@ -57,6 +59,11 @@ CSV_FIELDS = [
     "biography",
     "profile_url",
     "captions",  # 최근 게시물 캡션 (CAPTION_SEP로 구분)
+    # 갱신 판단용 시각. 이 두 칸이 없으면 '뭐가 오래됐는지'를 알 수 없어
+    # 오래된 것부터 골라 다시 크롤하는 게 불가능하다. 값이 비어 있으면
+    # 컬럼이 생기기 전에 수집된 행이라는 뜻이고, 갱신 1순위로 취급한다.
+    "first_seen_at",
+    "updated_at",
 ]
 
 # 캡션 여러 개를 CSV 한 칸에 담기 위한 구분자. 캡션 본문에 나올 일이 없는 문자열.
@@ -96,6 +103,15 @@ class DiscoverConfig:
     # 필터
     min_followers: int = 1000  # 너무 작은 계정 제외
     max_followers: int = 100_000  # 대형 계정은 단가↑·회신율↓ → 마이크로 위주
+
+    # 갱신 — 이미 저장된 계정의 팔로워·소개글·캡션을 다시 받아온다.
+    # 대상은 사용자가 화면에서 직접 고른다. 계정 하나에 delay가 두 번
+    # (프로필+캡션) 붙어 기본 설정으로 12초씩 걸리므로, 무엇을 갱신할지는
+    # 자동으로 정하기보다 고르게 두는 편이 낫다 — 지금 컨택하려는 계정만
+    # 최신화하면 되는 경우가 대부분이다.
+    refresh_usernames: list[str] = field(default_factory=list)
+    # '오래된 계정이 몇 개인가'를 화면에 알려줄 때만 쓰는 기준(갱신 대상 선정과 무관).
+    refresh_days: int = 7
 
     # 실행
     delay: float = 6.0  # 요청 사이 대기(초). 차단 회피용, 줄이지 말 것
@@ -318,6 +334,93 @@ def read_candidates(config: DiscoverConfig | None = None) -> list[dict]:
         return [row for row in csv.DictReader(f) if row.get("username")]
 
 
+def now_iso() -> str:
+    """수집 시각. reels.csv와 같은 형식(로컬 타임존 포함 ISO)을 쓴다."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def write_candidates(rows: list[dict], config: DiscoverConfig) -> None:
+    """후보 CSV를 통째로 다시 쓴다.
+
+    발굴은 append로 이어 쓰면 되지만 갱신은 **기존 행을 고쳐야** 해서 이어 쓸
+    수 없다(그대로 붙이면 같은 계정이 두 줄이 된다). 계정 수가 많아야 수백이라
+    전체를 다시 쓰는 편이 부분 수정보다 단순하고 어긋날 여지가 없다.
+    reels.py의 save_reel도 같은 이유로 같은 방식을 쓴다.
+    """
+    with open(config.output_path, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({k: row.get(k, "") for k in CSV_FIELDS})
+
+
+def upsert_candidate(row: dict, config: DiscoverConfig) -> None:
+    """계정 한 건을 저장한다(있으면 제자리에서 교체, 없으면 뒤에 추가).
+
+    계정마다 파일을 다시 쓰는 게 낭비로 보이지만, 갱신은 계정당 12초씩 걸리는
+    작업이라 파일 쓰기는 무시할 수 있는 비용이다. 반대로 한꺼번에 모아 뒀다가
+    마지막에 쓰면 중간에 끊겼을 때 그때까지 받아온 것이 전부 날아간다.
+    """
+    rows = read_candidates(config)
+    for i, existing in enumerate(rows):
+        if existing["username"] == row["username"]:
+            rows[i] = row
+            break
+    else:
+        rows.append(row)
+    write_candidates(rows, config)
+
+
+def _parsed_time(value: str):
+    """CSV의 시각 문자열 → datetime. 비었거나 깨졌으면 None."""
+    try:
+        return datetime.fromisoformat(str(value or "").strip())
+    except ValueError:
+        return None
+
+
+def refresh_targets(config: DiscoverConfig) -> tuple[list[dict], list[str]]:
+    """고른 계정명 → 후보 CSV의 행. (대상, 후보에 없던 계정명)을 돌려준다.
+
+    갱신은 이미 수집된 계정의 값을 고쳐 쓰는 일이므로, 후보 CSV에 없는 이름은
+    갱신할 대상 자체가 없다. 조용히 건너뛰지 않고 돌려줘서 호출부가 알린다.
+    """
+    by_user = {row["username"]: row for row in read_candidates(config)}
+    targets, missing = [], []
+    for raw in config.refresh_usernames:
+        username = raw.strip().lstrip("@")
+        if not username:
+            continue
+        row = by_user.get(username)
+        if row is None:
+            missing.append(username)
+        else:
+            targets.append(row)
+    return targets, missing
+
+
+def stale_candidates(config: DiscoverConfig | None = None) -> list[dict]:
+    """오래된 계정을 오래된 순으로 돌려준다(가장 오래된 것이 앞).
+
+    갱신 대상을 정하지는 않는다 — 그건 사용자가 화면에서 고른다. 이 함수는
+    '며칠 지난 계정이 몇 개인지'를 알려주는 용도다.
+
+    updated_at이 비어 있는 행 = 시각 컬럼이 생기기 전에 수집된 행이다. 언제
+    받아온 값인지 알 수 없으므로 '가장 오래됨'으로 보고 맨 앞에 둔다.
+    """
+    config = config or DiscoverConfig()
+    cutoff = datetime.now().astimezone() - timedelta(days=config.refresh_days)
+    stale = []
+    for row in read_candidates(config):
+        updated = _parsed_time(row.get("updated_at"))
+        if updated is None or updated < cutoff:
+            stale.append((updated, row))
+    # 정렬 키를 (시각을 아는가, 시각)으로 둔다. 시각 미상(None)이 먼저 오고,
+    # 두 번째 칸은 같은 그룹끼리만 비교되므로 aware/naive가 섞이지 않는다.
+    stale.sort(key=lambda pair: (pair[0] is not None, pair[0] or datetime.min))
+    return [row for _updated, row in stale]
+
+
 def _profile_row(profile, username: str, captions: list[str] | None = None) -> dict:
     """프로필 객체에서 CSV 한 줄을 만든다.
 
@@ -341,6 +444,130 @@ def _profile_row(profile, username: str, captions: list[str] | None = None) -> d
         "profile_url": f"https://www.instagram.com/{username}/",
         "captions": CAPTION_SEP.join(captions or []),
     }
+
+
+def fetch_candidate(
+    username: str, config: DiscoverConfig, log: LogFn, should_stop: StopFn
+) -> dict | None:
+    """계정 하나를 조회해 CSV 한 줄을 만든다. 실패하면 None(사유는 로그로).
+
+    발굴과 갱신이 이 함수를 공유한다 — 조회 절차(프로필 → 대기 → 캡션 → 대기)가
+    같아야 차단 회피 간격도 같게 유지된다. 시각 컬럼은 호출부가 채운다.
+    발굴은 first_seen_at을 새로 찍고, 갱신은 기존 값을 지켜야 하기 때문이다.
+    """
+    try:
+        profile = instaloader.Profile.from_username(L.context, username)
+    except instaloader.exceptions.ProfileNotExistsException:
+        log(f"  - {username} 건너뜀: 존재하지 않는 계정")
+        _sleep(config.delay, should_stop)
+        return None
+    except Exception as e:
+        # 403 등: 실제 원인을 감추지 말고 그대로 출력한다.
+        log(f"  - {username} 조회 실패 [{type(e).__name__}]: {e}")
+        _sleep(config.delay, should_stop)
+        return None
+
+    _sleep(config.delay, should_stop)
+    row = _profile_row(profile, username)
+    if config.captions_per_account > 0:
+        captions = fetch_captions(profile, config.captions_per_account, log)
+        row["captions"] = CAPTION_SEP.join(captions)
+        _sleep(config.delay, should_stop)
+    return row
+
+
+def run_refresh(
+    config: DiscoverConfig | None = None,
+    log: LogFn = print,
+    on_row: RowFn | None = None,
+    should_stop: StopFn | None = None,
+) -> dict:
+    """이미 저장된 계정의 정보를 다시 받아온다(오래된 것부터 일부만).
+
+    run_discovery와 같은 콜백 규약을 따르므로 웹의 잡 실행기가 그대로 쓴다.
+
+    발굴과 달리 **새 계정을 찾지 않는다.** 팔로워·소개글·캡션은 시간이 지나면
+    변하는데, 발굴은 이미 CSV에 있는 계정을 통째로 건너뛰기 때문에(load_seen)
+    재실행해도 옛 값이 그대로 남는다. 그 갱신을 이 함수가 맡는다.
+
+    캡션이 새로 들어오면 점수 신호(지역·음식·언어)도 달라진다. 스코어링은
+    LLM을 쓰지 않으므로, 갱신 후 judge.rescore_all을 돌리면 API 비용 없이
+    점수가 다시 매겨진다.
+    """
+    config = config or DiscoverConfig()
+    should_stop = should_stop or (lambda: False)
+    on_row = on_row or (lambda _row: None)
+    stats = {"ok": False, "checked": 0, "refreshed": 0, "failed": 0, "stopped": False}
+
+    if config.verbose_http:
+        enable_request_logging(log=log)
+    else:
+        disable_request_logging()
+
+    if not login_with_browser_cookies(log=log):
+        log("로그인에 실패해 중단합니다.")
+        stats["error"] = "로그인 실패 — instacrawl/.env의 IG_SESSIONID를 확인하세요."
+        return stats
+
+    try:
+        ensure_csv_schema(config, log)
+
+        targets, missing = refresh_targets(config)
+        if missing:
+            log(f"후보 목록에 없어 건너뜁니다: {', '.join('@' + m for m in missing)}")
+        if not targets:
+            log("갱신할 계정이 없습니다. 표에서 계정을 선택한 뒤 다시 실행하세요.")
+            stats["ok"] = True
+            return stats
+
+        log(f"선택한 계정 {len(targets)}개를 갱신합니다.")
+        log(f"예상 소요: 약 {len(targets) * config.delay * 2 / 60:.0f}분\n")
+
+        for old in targets:
+            if should_stop():
+                raise Stopped
+            username = old["username"]
+            stats["checked"] += 1
+            log(f"[{username}] 갱신 중... ({stats['checked']}/{len(targets)})")
+
+            row = fetch_candidate(username, config, log, should_stop)
+            if row is None:
+                stats["failed"] += 1
+                continue
+
+            # 최초 수집 시각은 갱신해도 유지한다 — '언제 발굴했는가'는 갱신과
+            # 무관한 사실이고, 없으면(옛 행) 지금을 최초로 본다.
+            row["first_seen_at"] = old.get("first_seen_at") or old.get("updated_at") or now_iso()
+            row["updated_at"] = now_iso()
+            upsert_candidate(row, config)
+            append_snapshot(
+                username, "crawl", followers=row["followers"], posts=row["posts"]
+            )
+            stats["refreshed"] += 1
+            on_row(row)
+
+            before = str(old.get("followers") or "").strip()
+            after = row["followers"] or 0
+            if before.isdigit() and int(before) != after:
+                diff = after - int(before)
+                log(f"  ✔ 팔로워 {int(before):,} → {after:,} ({diff:+,})")
+            else:
+                log(f"  ✔ 갱신 완료 (팔로워 {after:,})")
+
+    except Stopped:
+        stats["stopped"] = True
+        stats["ok"] = True
+        log("\n사용자 요청으로 중단했습니다. 지금까지 갱신한 계정은 저장되어 있습니다.")
+        return stats
+    except Exception as e:
+        stats["error"] = f"{type(e).__name__}: {e}"
+        log(f"\n예기치 못한 오류로 중단: {type(e).__name__}: {e}")
+        return stats
+
+    stats["ok"] = True
+    log(f"\n완료. 갱신 {stats['refreshed']}건 / 실패 {stats['failed']}건")
+    log("점수를 다시 매기려면 '재채점'을 누르세요(LLM 호출 없음).")
+    return stats
 
 
 def run_discovery(
@@ -437,10 +664,14 @@ def run_discovery(
                     row["captions"] = CAPTION_SEP.join(captions)
                     _sleep(config.delay, should_stop)
 
+                # 신규 수집이므로 최초·갱신 시각이 같다. 이 값이 있어야
+                # 나중에 stale_candidates가 '오래된 것부터'를 고를 수 있다.
+                row["first_seen_at"] = row["updated_at"] = now_iso()
                 writer.writerow(row)
                 f.flush()  # 중간에 끊겨도 지금까지 결과는 남도록 즉시 기록
                 stats["saved"] += 1
                 on_row(row)
+                append_snapshot(u, "crawl", followers=followers, posts=row["posts"])
                 log(
                     f"  ✔ 후보 저장: {u} (팔로워 {followers:,}, "
                     f"한글 {row['hangul_ratio']:.0%}, 캡션 {len(captions)}개)"

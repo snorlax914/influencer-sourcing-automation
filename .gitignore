@@ -5,6 +5,15 @@ instacrawl/session-*
 # 크롤링 산출물 (실제 계정 개인정보 포함)
 instacrawl/candidates.csv
 instacrawl/reels.csv
+instacrawl/history.csv
+# DM 발송 기록 — 계정명 + 보낸 본문이 그대로 들어간다.
+instacrawl/dm.csv
+# 내보낸 스프레드시트 — 위 CSV를 전부 합친 것이라 더더욱 커밋하면 안 된다.
+*.xlsx
+
+# 서버 실행 로그 (백그라운드로 띄울 때 생김)
+instacrawl/webapp.out.log
+instacrawl/webapp.err.log
 
 # Claude Code 개인 설정 (허용 명령 목록 등 — 팀원마다 다름)
 .claude/settings.local.json
